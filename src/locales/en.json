@@ -1,0 +1,21 @@
+{
+  "welcome_html": "<b>Welcome to the Downloader Bot!</b> 🤖\n\nPlease select your preferred language to read the Terms of Service (EULA). You must accept the terms before using this bot.",
+  "eula_text": "<b>Terms of Service (ToS) & EULA</b>\n\n<b>Clause 1: Nature of the Service</b>\nThis Bot is a technical automation tool that facilitates access to content already publicly available on the internet. The Bot does not store, host, or redistribute files on its own servers permanently. It acts as a transient storage agent.\n\n<b>Clause 2: User Responsibility (Safe Harbor)</b>\nBy using this Bot, you declare and guarantee that:\n1. You hold the legal rights or permission from the copyright holder to download the requested content.\n2. The use of the content is strictly for personal and non-commercial purposes (Fair Use).\n3. Developer Exemption: You assume full civil and criminal responsibility for any copyright infringement or violation of third-party platform terms of service (e.g., YouTube, Instagram, TikTok).\n\n<b>Clause 3: DMCA Policy and Notification</b>\nThe developer respects intellectual property. Since the Bot does not store content, takedown requests must be directed to the origin platform (where the video is originally hosted). However, if it is proven that the Bot is being used systematically to bypass protection measures, the offending user's access will be revoked.\n\n<b>Clause 4: Limitation of Liability</b>\nThe developer will not be liable for indirect, incidental, or punitive damages arising from the misuse of the tool. The service is provided \"AS IS\".\n\n<b>Privacy Policy</b>\n- We store your Telegram ID only for rate limiting and error logs.\n- Processed URLs are discarded immediately after download.\n- Generated files are deleted from temporary servers immediately after successful delivery.\n- We do not sell or share data with third parties.",
+  "accept_button": "✅ I agree",
+  "disclaimer_footer": "<i>This file was processed at the user's request. The developer does not host this content and is not responsible for its future use.</i>",
+  "send_url_prompt": "You have accepted the terms. Please send me a valid URL to download.",
+  "status_analyzing": "Analyzing URL...",
+  "status_downloading": "Downloading...",
+  "status_clipping": "Clipping video...",
+  "status_uploading": "Processing & Uploading to Telegram...",
+  "error_invalid_url": "Invalid or unsupported URL.",
+  "error_invalid_timestamp": "Please provide at least one valid timestamp (e.g., 1:00).",
+  "error_start_after_end": "Start time must be before end time.",
+  "error_file_too_large": "The file is too large for Telegram.",
+  "eula_agreed_already": "You have already agreed to the terms. Please send a URL.",
+  "cookie_prompt": "Please reply to this message with your `cookies.txt` file or send `/usecookies &lt;content&gt;`.",
+  "cookie_success": "✅ Your cookies have been securely encrypted and stored. You can now download restricted videos.\n\nTo disable this, use /clearcookies.",
+  "get_full_file": "📥 Get full file",
+  "sending_doc": "Sending original file...",
+  "help_text": "<b>How to use the Downloader Bot:</b>\n\n1. Send me any URL containing a video, audio, or image to download it.\n2. In groups, use the command <code>/dl &lt;URL&gt;</code> so I can see your message.\n3. The bot automatically downloads videos in the best possible format and sends them directly to you.\n\n<b>Commands:</b>\n/start - Starts the bot and allows you to accept the EULA.\n/help - Shows this help message.\n/usecookies - Upload a `cookies.txt` file to download restricted content from platforms like YouTube or Instagram.\n/clearcookies - Deletes your securely stored cookies from the database."
+}

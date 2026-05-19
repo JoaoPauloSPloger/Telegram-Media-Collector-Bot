@@ -1,0 +1,98 @@
+import asyncio
+import psutil
+import time
+from aiogram import Router, F
+from aiogram.filters import Command
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.exceptions import TelegramAPIError
+from src.database.db import AsyncSessionLocal, User, Event
+from sqlalchemy import select, func
+
+router = Router()
+start_time = time.time()
+
+active_panels = {}
+
+def get_system_metrics():
+    cpu = psutil.cpu_percent(interval=None)
+    ram = psutil.virtual_memory().percent
+    disk = psutil.disk_usage('/').percent
+    net = psutil.net_io_counters()
+    net_sent = net.bytes_sent / (1024 * 1024)
+    net_recv = net.bytes_recv / (1024 * 1024)
+
+    uptime_seconds = int(time.time() - start_time)
+    m, s = divmod(uptime_seconds, 60)
+    h, m = divmod(m, 60)
+    d, h = divmod(h, 24)
+    uptime_str = f"{d}d {h}h {m}m"
+
+    return cpu, ram, disk, net_sent, net_recv, uptime_str
+
+async def get_db_metrics():
+    async with AsyncSessionLocal() as session:
+        users_count = await session.scalar(select(func.count()).select_from(User))
+        events_count = await session.scalar(select(func.count()).select_from(Event))
+        return users_count or 0, events_count or 0
+
+def format_stats(cpu, ram, disk, net_sent, net_recv, uptime, users_count, events_count):
+    return (
+        f"📊 <b>Admin Live Dashboard</b>\n\n"
+        f"🖥 <b>System</b>\n"
+        f"├ CPU: {cpu}%\n"
+        f"├ RAM: {ram}%\n"
+        f"└ Disk: {disk}%\n\n"
+        f"🌐 <b>Network</b>\n"
+        f"├ Sent: {net_sent:.1f} MB\n"
+        f"└ Recv: {net_recv:.1f} MB\n\n"
+        f"📈 <b>Bot Stats</b>\n"
+        f"├ Users: {users_count}\n"
+        f"├ Total Downloads: {events_count}\n"
+        f"└ Uptime: {uptime}\n\n"
+        f"<i>Updates every 5s...</i>"
+    )
+
+@router.message(Command("stats"))
+async def show_stats(message: Message):
+    cpu, ram, disk, net_sent, net_recv, uptime = get_system_metrics()
+    users_count, events_count = await get_db_metrics()
+
+    text = format_stats(cpu, ram, disk, net_sent, net_recv, uptime, users_count, events_count)
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="❌ Close Dashboard", callback_data="close_stats")
+    ]])
+
+    msg = await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    active_panels[msg.message_id] = True
+
+    async def update_panel():
+        while active_panels.get(msg.message_id, False):
+            await asyncio.sleep(5)
+            if not active_panels.get(msg.message_id, False):
+                break
+
+            cpu, ram, disk, net_sent, net_recv, uptime = get_system_metrics()
+            users_count, events_count = await get_db_metrics()
+            new_text = format_stats(cpu, ram, disk, net_sent, net_recv, uptime, users_count, events_count)
+
+            try:
+                await msg.edit_text(new_text, reply_markup=keyboard, parse_mode="HTML")
+            except TelegramAPIError as e:
+                if "message to edit not found" in str(e).lower() or "message is not modified" not in str(e).lower():
+                    # Stop if message was deleted
+                    active_panels[msg.message_id] = False
+                    break
+                pass
+
+    asyncio.create_task(update_panel())
+
+@router.callback_query(lambda c: c.data == "close_stats")
+async def close_stats(callback_query):
+    msg_id = callback_query.message.message_id
+    if msg_id in active_panels:
+        active_panels[msg_id] = False
+        del active_panels[msg_id]
+
+    await callback_query.message.edit_text("✅ Dashboard closed.")
+    await callback_query.answer()

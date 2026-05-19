@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "telegram-downloader-bot"
+version = "1.0.0"
+description = "A robust Telegram bot to download restricted videos using yt-dlp, with AES-256 cookie encryption, local Bot API support, and group telemetry."
+readme = "README.md"
+authors = [
+    { name = "Jules", email = "jules@example.com" }
+]
+requires-python = ">=3.9"
+dependencies = [
+    "aiogram>=3.3.0",
+    "yt-dlp",
+    "sqlalchemy>=2.0.0",
+    "aiosqlite",
+    "cryptography",
+    "aiofiles",
+    "beautifulsoup4",
+    "aiohttp"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/yourusername/telegram-downloader-bot"

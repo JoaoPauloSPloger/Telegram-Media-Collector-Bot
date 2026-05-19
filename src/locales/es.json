@@ -1,0 +1,18 @@
+{
+  "welcome_html": "<b>¡Bienvenido al Bot de Descargas!</b> 🤖\n\nPor favor, seleccione su idioma preferido para leer los Términos de Servicio (EULA). Debe aceptar los términos antes de usar este bot.",
+  "eula_text": "<b>Términos de Servicio (ToS) y EULA</b>\n\n<b>Cláusula 1: Naturaleza del Servicio</b>\nEste Bot es una herramienta de automatización técnica que facilita el acceso a contenido ya disponible públicamente en Internet. El Bot no almacena, aloja ni redistribuye archivos en sus propios servidores de forma permanente. Actúa como un agente de almacenamiento transitorio.\n\n<b>Cláusula 2: Responsabilidad del Usuario (Safe Harbor)</b>\nAl usar este Bot, usted declara y garantiza que:\n1. Posee los derechos legales o el permiso del titular de los derechos de autor para descargar el contenido solicitado.\n2. El uso del contenido es estrictamente para fines personales y no comerciales (Uso Justo).\n3. Exención del Desarrollador: Usted asume toda la responsabilidad civil y penal por cualquier infracción de derechos de autor o violación de los términos de servicio de plataformas de terceros (por ejemplo, YouTube, Instagram, TikTok).\n\n<b>Cláusula 3: Política de DMCA y Notificación</b>\nEl desarrollador respeta la propiedad intelectual. Dado que el Bot no almacena contenido, las solicitudes de eliminación (takedown) deben dirigirse a la plataforma de origen. Sin embargo, si se demuestra que el Bot se utiliza sistemáticamente para eludir medidas de protección, se revocará el acceso del usuario infractor.\n\n<b>Cláusula 4: Limitación de Responsabilidad</b>\nEl desarrollador no será responsable por daños indirectos, incidentales o punitivos derivados del mal uso de la herramienta. El servicio se proporciona \"TAL CUAL\".\n\n<b>Política de Privacidad</b>\n- Almacenamos su ID de Telegram solo para limitar la tasa y registrar errores.\n- Las URL procesadas se descartan inmediatamente después de la descarga.\n- Los archivos generados se eliminan de los servidores temporales inmediatamente después de una entrega exitosa.\n- No vendemos ni compartimos datos con terceros.",
+  "accept_button": "✅ Estoy de acuerdo",
+  "disclaimer_footer": "<i>Este archivo fue procesado a petición del usuario. El desarrollador no aloja este contenido y no se hace responsable de su uso futuro.</i>",
+  "send_url_prompt": "Has aceptado los términos. Por favor envíame una URL válida para descargar.",
+  "status_analyzing": "Analizando URL...",
+  "status_downloading": "Descargando...",
+  "status_uploading": "Procesando y Subiendo a Telegram...",
+  "error_invalid_url": "URL no válida o no admitida.",
+  "error_file_too_large": "El archivo es demasiado grande para Telegram.",
+  "eula_agreed_already": "Ya has aceptado los términos. Por favor envía una URL.",
+  "cookie_prompt": "Por favor, responda a este mensaje con su archivo `cookies.txt` o envíe `/usecookies &lt;contenido&gt;`.",
+  "cookie_success": "✅ Sus cookies se han cifrado y almacenado de forma segura. Ahora puede descargar videos restringidos.\n\nPara desactivar esto, use /clearcookies.",
+  "get_full_file": "📥 Obtener archivo original",
+  "sending_doc": "Enviando archivo original...",
+  "help_text": "<b>Cómo usar el Bot Descargador:</b>\n\n1. Envíame cualquier URL que contenga un video, audio o imagen para descargarlo.\n2. En los grupos, usa el comando <code>/dl &lt;URL&gt;</code> para que pueda ver tu mensaje.\n3. El bot descarga automáticamente los videos en el mejor formato posible y te los envía.\n\n<b>Comandos:</b>\n/start - Inicia el bot.\n/help - Muestra este mensaje de ayuda.\n/usecookies - Sube un archivo `cookies.txt` para descargar contenido restringido (ej. YouTube, Instagram).\n/clearcookies - Elimina las cookies de nuestra base de datos."
+}

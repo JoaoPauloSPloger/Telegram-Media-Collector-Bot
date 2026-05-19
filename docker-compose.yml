@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: telegram-media-collector:latest
+    container_name: telegram_downloader_bot
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - SYS_LOGGING_CHANNEL_ID=${SYS_LOGGING_CHANNEL_ID}
+      - MEDIA_LOGGING_CHANNEL_ID=${MEDIA_LOGGING_CHANNEL_ID}
+    labels:
+      - "app.name=Telegram Media Collector"
+      - "app.description=Media downloader and converter bot"
+      - "app.version=2.0.0"
+    volumes:
+      - bot_data:/app/database
+      - bot_downloads:/app/downloads
+    ports:
+      - "8080:8080" # Dummy port mapping to light up the dashboard UI
+    depends_on:
+      - telegram-bot-api
+    networks:
+      - bot_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.80'
+          memory: 1024M
+        reservations:
+          memory: 256M
+
+  telegram-bot-api:
+    image: aiogram/telegram-bot-api:latest
+    container_name: telegram_local_api
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_API_ID=${TELEGRAM_API_ID}
+      - TELEGRAM_API_HASH=${TELEGRAM_API_HASH}
+    volumes:
+      - telegram_api_data:/var/lib/telegram-bot-api
+    networks:
+      - bot_network
+
+  sqlite-web:
+    image: coleifer/sqlite-web
+    container_name: sqlite_web_admin
+    restart: unless-stopped
+    ports:
+      - "8085:8080"
+    volumes:
+      - bot_data:/data
+    command: /data/bot_database.db
+    networks:
+      - bot_network
+
+networks:
+  bot_network:
+    driver: bridge
+
+volumes:
+  bot_data:
+  bot_downloads:
+  telegram_api_data:

@@ -1,0 +1,84 @@
+Metadata-Version: 2.4
+Name: telegram-downloader-bot
+Version: 1.0.0
+Summary: A robust Telegram bot to download restricted videos using yt-dlp, with AES-256 cookie encryption, local Bot API support, and group telemetry.
+Author-email: Jules <jules@example.com>
+Project-URL: Homepage, https://github.com/yourusername/telegram-downloader-bot
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: aiogram>=3.3.0
+Requires-Dist: yt-dlp
+Requires-Dist: sqlalchemy>=2.0.0
+Requires-Dist: aiosqlite
+Requires-Dist: cryptography
+Requires-Dist: aiofiles
+Requires-Dist: beautifulsoup4
+Requires-Dist: aiohttp
+
+# Telegram Downloader Bot
+
+An asynchronous, highly robust Telegram bot built with Python, `aiogram` (v3), and `yt-dlp`. It allows users to download media from sites like YouTube, Instagram, and TikTok, with built-in telemetry, EULA enforcement, and support for downloading files up to 2GB via a Local Telegram Bot API Server.
+
+## Features
+- **Local Bot API Server Support:** Bypass the 50MB file size limit and upload files up to 2GB.
+- **Strict EULA Flow:** Users must accept a multi-lingual EULA (EN, ES, PT, FR, DE) before using the bot.
+- **Secure Cookie Storage:** Allows downloading age-restricted or private videos by uploading a `cookies.txt` file, which is securely encrypted using AES-256 in the database.
+- **Live Progress UI:** ASCII progress bar and speed tracking edit the status message live.
+- **SQLite Database with Telemetry:** Secure, SQL-Injection-proof database tracking users and group interactions.
+
+## Prerequisites
+
+### 1. System Requirements
+- Python 3.9+
+- **FFmpeg (Crucial Requirement)**: `yt-dlp` requires FFmpeg to merge high-quality video and audio streams. If FFmpeg is missing, you will see `Aborting due to --abort-on-error`.
+  - **Ubuntu/Debian:** `sudo apt-get install ffmpeg`
+  - **macOS:** `brew install ffmpeg`
+  - **Windows:** Download from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) or install via `winget install ffmpeg`
+
+### 2. Getting your AES Key
+The bot requires a base64 URL-safe AES-256 key to encrypt user cookies securely. Run the following command to generate one:
+```bash
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+Copy the output string and place it in your `config.json`.
+
+### 3. Setting up the Local API Server (Optional but Recommended)
+To send files up to 2GB, you must run the Telegram Bot API server locally (otherwise, you are limited to 50MB). The easiest way is via Docker:
+
+1. Get your `API_ID` and `API_HASH` from [my.telegram.org](https://my.telegram.org).
+2. Run the Docker container:
+```bash
+docker run -d -p 8081:8081 \
+  --name telegram-bot-api \
+  --restart=always \
+  -v telegram-bot-api-data:/var/lib/telegram-bot-api \
+  aiogram/telegram-bot-api:latest \
+  TELEGRAM_API_ID="YOUR_API_ID" \
+  TELEGRAM_API_HASH="YOUR_API_HASH"
+```
+
+## Installation & Setup
+
+1. Clone the repository.
+2. Create a virtual environment and install dependencies:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   ```
+3. Copy `config.example.json` to `config.json` and edit it:
+   ```json
+   {
+     "bot_token": "YOUR_BOT_TOKEN",
+     "bot_username": "YOUR_BOT_USERNAME",
+     "aes_key": "YOUR_BASE_64_AES_KEY",
+     "local_api_server": "http://localhost:8081", // Set to null if using the public 50MB cloud API
+     "db_url": "sqlite+aiosqlite:///bot_database.db"
+   }
+   ```
+4. Start the bot:
+   ```bash
+   python3 src/main.py
+   ```
+
+*Note: The SQLite database (`bot_database.db`) will be created automatically upon the first run!*

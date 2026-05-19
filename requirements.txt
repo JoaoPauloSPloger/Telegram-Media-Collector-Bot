@@ -1,0 +1,11 @@
+aiogram>=3.3.0
+yt-dlp
+sqlalchemy>=2.0.0
+aiosqlite
+cryptography
+aiofiles
+beautifulsoup4
+aiohttp
+psutil
+spotdl
+gallery-dl
