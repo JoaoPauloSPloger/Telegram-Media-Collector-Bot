@@ -28,11 +28,30 @@ from src.utils.security import is_safe_url
 active_downloads = {}
 
 def get_progress_bar(percentage: float) -> str:
-    """Generate ASCII progress bar [■■■#####]"""
-    filled_blocks = int(percentage / 10)
-    empty_blocks = 10 - filled_blocks
-    bar = "■" * filled_blocks + "#" * empty_blocks
-    return f"[{bar}] {percentage:.1f}%"
+    """Generate ASCII progress bar █████▍    """
+    length = 12.5 # Total blocks (each full block is 8 sub-blocks, so 100% = 100 sub-blocks. 100/8 = 12.5 full blocks)
+    sub_blocks = ['░', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█']
+
+    total_sub_blocks = int(percentage)
+
+    full_blocks = total_sub_blocks // 8
+    remainder = total_sub_blocks % 8
+
+    bar = sub_blocks[-1] * full_blocks
+
+    # avoid appending if it's already 100% exactly (12.5 full blocks is 100 sub_blocks, we will max out at 100)
+    # Since we want exactly ████████████▌ at 100% (12 full blocks + 4/8 block -> 12 full + 1 half)
+    if total_sub_blocks >= 100:
+        bar = sub_blocks[-1] * 12 + sub_blocks[4]
+    else:
+        bar += sub_blocks[remainder]
+
+    # calculate remaining empty blocks
+    empty_len = 13 - len(bar) # pad out to 13 characters total
+    if empty_len > 0:
+        bar += sub_blocks[0] * empty_len
+
+    return f"{bar} {percentage:.1f}%"
 
 def progress_hook(d: dict, event_id: str):
     # Check if task was cancelled by the user
@@ -243,7 +262,12 @@ async def download_video(url: str, cookies_path: str = None, event_id: str = Non
             try:
                 cmd = ['spotdl', url, '--output', f"{download_dir}/{event_id}_{{title}}.{{ext}}"]
                 process = await asyncio.create_subprocess_exec(*cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                stdout, stderr = await process.communicate()
+                try:
+                    stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
+                except asyncio.TimeoutError:
+                    process.kill()
+                    raise Exception("spotdl timed out")
+
                 if process.returncode == 0:
                     import glob
                     matches = glob.glob(f"{download_dir}/{event_id}_*.*")
@@ -259,104 +283,90 @@ async def download_video(url: str, cookies_path: str = None, event_id: str = Non
             except Exception as e:
                 pass
 
-        # vxTwitter API for Twitter/X fallback
-        elif 'twitter.com' in url or 'x.com' in url:
-            import aiohttp
-            import re
+        # Tier 2: Cobalt API Fallback
+        # Handles Bsky, X/Twitter, Instagram, TikTok reliably without local cookies
+        import aiohttp
+        try:
+            cobalt_api_url = "https://api.cobalt.tools/api/json"
+            headers = {
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "url": url,
+                "isAudioOnly": media_type == 'audio'
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(cobalt_api_url, headers=headers, json=payload, timeout=30) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        status = data.get('status')
+                        if status in ['stream', 'redirect'] and 'url' in data:
+                            media_url = data['url']
+                            ext = 'mp3' if media_type == 'audio' else 'mp4'
+
+                            filename = f"{download_dir}/{event_id}_cobalt.{ext}"
+
+                            async with session.get(media_url) as file_resp:
+                                if file_resp.status == 200:
+                                    with open(filename, 'wb') as f:
+                                        async for chunk in file_resp.content.iter_chunked(1024 * 1024):
+                                            f.write(chunk)
+
+                                    return {
+                                        'success': True,
+                                        'url': url,
+                                        'filepath': filename,
+                                        'title': 'Downloaded via Cobalt API',
+                                        'description': 'Media bypassing successful',
+                                        'duration': 0
+                                    }
+        except Exception as e:
+            pass
+
+        # Tier 3: Local Extractors with Timeouts (gallery-dl, spotdl)
+        try:
+            import os
+            # Create a specific temporary directory to prevent race conditions with concurrent users
+            temp_dir = f"{download_dir}/temp_{event_id}"
+            os.makedirs(temp_dir, exist_ok=True)
+
+            cmd = ['gallery-dl', url, '--dest', temp_dir]
+            process = await asyncio.create_subprocess_exec(*cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            # Use wait_for to prevent infinite queue locks if process hangs
             try:
-                # Extract tweet ID
-                match = re.search(r'(?:twitter\.com|x\.com)/\w+/status/(\d+)', url)
-                if match:
-                    tweet_id = match.group(1)
-                    api_url = f"https://api.vxtwitter.com/Twitter/status/{tweet_id}"
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
+            except asyncio.TimeoutError:
+                process.kill()
+                raise Exception("gallery-dl timed out")
 
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(api_url) as resp:
-                            if resp.status == 200:
-                                api_result = await resp.json()
-                                if 'media_extended' in api_result and api_result['media_extended']:
-                                    # Find the first video (or just take the first media if it's an image)
-                                    media_url = None
-                                    media_type_dl = 'photo'
-                                    for media in api_result['media_extended']:
-                                        if media.get('type') == 'video' or media.get('type') == 'gif':
-                                            media_url = media.get('url')
-                                            media_type_dl = 'video'
-                                            break
-
-                                    # Fallback to image if no video
-                                    if not media_url:
-                                        media_url = api_result['media_extended'][0].get('url')
-                                        media_type_dl = 'photo'
-
-                                    if media_url:
-                                        ext = media_url.split('.')[-1]
-                                        if '?' in ext:
-                                            ext = ext.split('?')[0]
-                                        if ext not in ['mp4', 'jpg', 'png', 'gif']:
-                                            ext = 'mp4' if media_type_dl == 'video' else 'jpg'
-
-                                        filename = f"{download_dir}/{event_id}_twitter.{ext}"
-
-                                        async with session.get(media_url) as file_resp:
-                                            if file_resp.status == 200:
-                                                with open(filename, 'wb') as f:
-                                                    async for chunk in file_resp.content.iter_chunked(1024 * 1024):
-                                                        f.write(chunk)
-
-                                                title = api_result.get('text', 'Twitter Media')
-                                                author = api_result.get('user_name', 'Twitter User')
-
-                                                return {
-                                                    'success': True,
-                                                    'url': url,
-                                                    'filepath': filename,
-                                                    'title': f"{author} on X",
-                                                    'description': title[:200],
-                                                    'duration': 0
-                                                }
-            except Exception as e:
-                pass
-
-        # Determine if we should try gallery-dl (Instagram, etc)
-        # gallery-dl is great for generic extractors when yt-dlp fails
-        elif 'instagram.com' in url:
-            try:
-                import os
-                # Create a specific temporary directory to prevent race conditions with concurrent users
-                temp_dir = f"{download_dir}/temp_{event_id}"
-                os.makedirs(temp_dir, exist_ok=True)
-
-                # Use --dest for output directory in gallery-dl safely
-                cmd = ['gallery-dl', url, '--dest', temp_dir]
-                process = await asyncio.create_subprocess_exec(*cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                stdout, stderr = await process.communicate()
-                if process.returncode == 0:
-                    import glob
-                    import shutil
-                    # get all files in our isolated temp_dir
-                    list_of_files = glob.glob(f'{temp_dir}/**/*', recursive=True)
-                    # filter out directories
-                    list_of_files = [f for f in list_of_files if os.path.isfile(f)]
-                    if list_of_files:
-                        latest_file = list_of_files[0] # just grab the first file found in this isolated dir
-                        # move the file to our desired location
-                        new_filepath = f"{download_dir}/{event_id}_gallerydl{os.path.splitext(latest_file)[1]}"
-                        shutil.move(latest_file, new_filepath)
-                        shutil.rmtree(temp_dir) # cleanup
-                        return {
-                            'success': True,
-                            'url': url,
-                            'filepath': new_filepath,
-                            'title': 'Social Media Download',
-                            'description': 'Downloaded via gallery-dl',
-                            'duration': 0
-                        }
-                # cleanup on failure
+            if process.returncode == 0:
+                import glob
                 import shutil
-                if os.path.exists(temp_dir):
-                    shutil.rmtree(temp_dir)
-            except Exception as e:
-                pass
+                # get all files in our isolated temp_dir
+                list_of_files = glob.glob(f'{temp_dir}/**/*', recursive=True)
+                # filter out directories
+                list_of_files = [f for f in list_of_files if os.path.isfile(f)]
+                if list_of_files:
+                    latest_file = list_of_files[0] # just grab the first file found in this isolated dir
+                    # move the file to our desired location
+                    new_filepath = f"{download_dir}/{event_id}_gallerydl{os.path.splitext(latest_file)[1]}"
+                    shutil.move(latest_file, new_filepath)
+                    shutil.rmtree(temp_dir) # cleanup
+                    return {
+                        'success': True,
+                        'url': url,
+                        'filepath': new_filepath,
+                        'title': 'Social Media Download',
+                        'description': 'Downloaded via gallery-dl',
+                        'duration': 0
+                    }
+            # cleanup on failure
+            import shutil
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+        except Exception as e:
+            pass
 
     return result

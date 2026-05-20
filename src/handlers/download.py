@@ -38,7 +38,7 @@ locales = load_locales()
 # Regex to find URLs in text
 URL_REGEX = re.compile(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
 
-SPINNER_FRAMES = ['/', '-', '\\', '|']
+SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
 @router.message(Command("clip", "cut"))
 async def handle_clip_message(message: Message, db_user):
@@ -120,15 +120,42 @@ async def handle_url_message(message: Message, db_user):
         # Ignore non-URL messages
         return
         
-    url = urls[0] # Take the first URL found
+    urls = [u.rstrip(',;') for u in urls]
+
     lang = db_user.language_code if db_user else 'en'
     
-    # Process Spotify/Apple Music URLs (yt-dlp often handles them but ytsearch fallback is safer for some tracks)
-    if 'spotify.com' in url or 'music.apple.com' in url:
-        # We will attempt to download it natively first, but set default media_type to audio
-        await process_download(message, db_user, url, lang, media_type='audio')
-    else:
-        await process_download(message, db_user, url, lang)
+    # Iterate over all found URLs
+    for url in urls:
+        import yt_dlp
+        import asyncio
+
+        # Check if URL might be a playlist
+        is_playlist = False
+        try:
+            ydl_opts = {'extract_flat': True, 'quiet': True, 'no_warnings': True}
+
+            def extract_playlist_info():
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    return ydl.extract_info(url, download=False)
+
+            loop = asyncio.get_event_loop()
+            info = await loop.run_in_executor(None, extract_playlist_info)
+
+            if info and 'entries' in info:
+                is_playlist = True
+                playlist_urls = [entry['url'] for entry in info['entries'] if entry.get('url')]
+
+                if playlist_urls:
+                    await message.answer(f"📦 Found playlist with {len(playlist_urls)} items. Adding them to queue...")
+                    for pl_url in playlist_urls:
+                        media_type = 'audio' if ('spotify.com' in pl_url or 'music.apple.com' in pl_url) else 'video'
+                        await process_download(message, db_user, pl_url, lang, media_type=media_type)
+        except Exception:
+            pass # Not a playlist or extraction failed, fallback to direct download
+
+        if not is_playlist:
+            media_type = 'audio' if ('spotify.com' in url or 'music.apple.com' in url) else 'video'
+            await process_download(message, db_user, url, lang, media_type=media_type)
 
 async def process_download(message: Message, db_user, url: str, lang: str, download_range: tuple = None, media_type: str = 'video'):
     # Check if URL belongs to an audio-only platform

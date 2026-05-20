@@ -41,6 +41,7 @@ def load_config():
 
     c['sys_logging_channel_id'] = os.getenv('SYS_LOGGING_CHANNEL_ID', c.get('sys_logging_channel_id'))
     c['media_logging_channel_id'] = os.getenv('MEDIA_LOGGING_CHANNEL_ID', c.get('media_logging_channel_id'))
+    c['admin_password'] = os.getenv('ADMIN_PASSWORD', c.get('admin_password'))
 
     return c
 

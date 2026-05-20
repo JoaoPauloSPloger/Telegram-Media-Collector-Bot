@@ -67,13 +67,25 @@ async def main():
     from src.handlers import inline
     dp.include_router(inline.router)
 
+    from src.handlers import admin
+    dp.include_router(admin.router)
+
     # Register middleware
     from src.middlewares.eula import EulaMiddleware
     dp.message.middleware(EulaMiddleware())
     dp.callback_query.middleware(EulaMiddleware())
     dp.inline_query.middleware(EulaMiddleware())
 
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await bot.session.close()
+        # Close database engine gracefully
+        from src.database.db import engine
+        await engine.dispose()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logging.info("Bot stopped!")
