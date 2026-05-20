@@ -1,3 +1,4 @@
+LICENSE
 README.md
 pyproject.toml
 src/main.py
@@ -5,7 +6,10 @@ src/database/__init__.py
 src/database/db.py
 src/database/models.py
 src/handlers/__init__.py
+src/handlers/admin.py
+src/handlers/convert.py
 src/handlers/download.py
+src/handlers/inline.py
 src/handlers/privacy.py
 src/handlers/settings.py
 src/handlers/start.py
@@ -18,10 +22,12 @@ src/telegram_downloader_bot.egg-info/SOURCES.txt
 src/telegram_downloader_bot.egg-info/dependency_links.txt
 src/telegram_downloader_bot.egg-info/requires.txt
 src/telegram_downloader_bot.egg-info/top_level.txt
+src/utils/cache.py
 src/utils/downloader.py
 src/utils/i18n.py
 src/utils/music_scraper.py
 src/utils/queue_manager.py
 src/utils/scraper.py
 src/utils/security.py
+src/utils/telegram_logger.py
 src/utils/time_parser.py
