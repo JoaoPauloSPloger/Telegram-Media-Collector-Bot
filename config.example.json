@@ -1,7 +1,8 @@
 {
   "bot_token": "YOUR_BOT_TOKEN_HERE",
   "bot_username": "YOUR_BOT_USERNAME_HERE",
-  "aes_key": "g-xpthCpCay1nQ7Rd0hXI6EDVWQ__B-Bhv6lFTMMUNY=",
+  "aes_key": "vKwpplewTGJrhHBiPPJUx7rxu6qPOHgLYf-VTtbM_ck=",
+  "admin_password": "2aS0ofi2EgnvLBnIxFXc61PzRKkEmc2lw6bswXCjcKY=",
   "local_api_server": "http://telegram-bot-api:8081",
   "db_url": "sqlite+aiosqlite:///database/bot_database.db",
   "download_dir": "downloads/",

@@ -29,6 +29,8 @@ Telegram Media Collector is a powerful bot for downloading and converting media 
 
 ### System & Administration
 - `/stats` - Displays a live dashboard with system metrics (CPU, RAM, Disk, Network) and bot usage statistics.
+- `/shutdown [password]` - Safely shuts down the bot (requires `admin_password` to be set in config/.env).
+- `/restart [password]` - Restarts the bot container (requires `admin_password` to be set in config/.env).
 
 ---
 
@@ -72,7 +74,9 @@ cp .env.example .env
 3. Edit the `.env` file with your credentials:
 * `BOT_TOKEN` from [@BotFather](https://t.me/botfather)
 * `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` from [my.telegram.org](https://my.telegram.org)
-* Generate a new AES key: `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+* Generate a new AES key: `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` (or use the one provided)
+* Add a strong, secure `ADMIN_PASSWORD` to protect the remote administration commands (`/shutdown` and `/restart`).
+* Configure the logging channels `SYS_LOGGING_CHANNEL_ID` and `MEDIA_LOGGING_CHANNEL_ID` so the bot can track downloads, metrics, and errors properly.
 
 
 4. Start the containers:
@@ -92,6 +96,9 @@ This project includes a built-in `sqlite-web` container that allows you to view 
 1. Open your browser and navigate to `http://localhost:8085` (or your server's IP address and port 8085).
 2. You can view tables, run SQL queries, and export the database as a `.csv` or `.sql` file.
 3. If you want to import or backup the database file directly, it is located at `./database/bot_database.db` on your host machine.
+
+**Important Database Persistence Note:**
+The bot relies on SQLite. To prevent loss of user data and EULA acceptance status across container restarts, you must ensure that there is a `bot_database.db` file located strictly inside the `./database/` directory. The Docker volume mounts this folder to persist state.
 
 ### Alternative: Local Installation (Manual)
 
