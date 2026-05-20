@@ -1,3 +1,19 @@
+# Telegram Media Collector Bot
+# Copyright (C) 2026 Vulpes Tech
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 import os
 import html
 import glob
@@ -10,7 +26,14 @@ from src.utils.cache import set_cached_file_id
 router = Router()
 locales = load_locales()
 
-async def handle_upload(original_message: Message, result: dict, event_id: str, db_user, is_document: bool = False):
+import asyncio
+import time
+from aiogram.exceptions import TelegramAPIError
+from src.utils.downloader import get_progress_bar
+
+SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+async def handle_upload(original_message: Message, result: dict, event_id: str, db_user, is_document: bool = False, status_msg: Message = None):
     lang = db_user.language_code if db_user else 'en'
     
     filepath = result['filepath']
@@ -75,6 +98,43 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
                 # Chat deleted or bot kicked, send to user private chat directly
                 func = getattr(original_message.bot, f"send_{method_name}")
                 return await func(chat_id=original_message.from_user.id, **kwargs)
+
+    # Start background upload UI animation
+    upload_ui_task = None
+    if status_msg:
+        async def animate_upload():
+            spinner_idx = 0
+            start_time = time.time()
+            try:
+                while True:
+                    spinner_idx = (spinner_idx + 1) % len(SPINNER_FRAMES)
+                    spinner = SPINNER_FRAMES[spinner_idx]
+                    elapsed = time.time() - start_time
+
+                    # Telegram does not give us a streaming upload hook natively without writing a custom FS wrapper,
+                    # so we will simulate progress based on typical upload speeds (e.g. 5-10MB/s) as an approximation
+                    # assuming a very conservative 2MB/s upload speed for the animation ETA.
+                    assumed_speed_mb = 2.0
+                    assumed_duration = file_size_mb / assumed_speed_mb if file_size_mb > 0 else 1
+
+                    progress_pct = min((elapsed / assumed_duration) * 100, 99.0)
+                    eta_s = max(int(assumed_duration - elapsed), 0)
+
+                    bar = get_progress_bar(progress_pct)
+                    text = f"{spinner} 📤 {get_text(locales, lang, 'status_uploading')}\n"
+                    text += f"{bar}\n"
+                    text += f"ETA: {eta_s}s | Speed: {assumed_speed_mb:.1f} MB/s"
+
+                    try:
+                        await status_msg.edit_text(text)
+                    except TelegramAPIError:
+                        pass
+
+                    await asyncio.sleep(2)
+            except asyncio.CancelledError:
+                pass
+
+        upload_ui_task = asyncio.create_task(animate_upload())
 
     # Send the media based on file type or if it's explicitly requested as document
     try:
@@ -220,6 +280,14 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
                 event.status = 'failed'
                 await session.commit()
     finally:
+        if upload_ui_task:
+            upload_ui_task.cancel()
+        if status_msg:
+            try:
+                await status_msg.delete()
+            except TelegramAPIError:
+                pass
+
         # Clean up ALL local files matching this event_id (including temp parts)
         search_pattern = f"downloads/{event_id}_*"
         for match in glob.glob(search_pattern):

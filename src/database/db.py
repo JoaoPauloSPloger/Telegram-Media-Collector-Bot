@@ -1,3 +1,19 @@
+# Telegram Media Collector Bot
+# Copyright (C) 2026 Vulpes Tech
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 import os
 import json
 import base64
@@ -11,11 +27,14 @@ def load_config():
             c = json.load(f)
     except FileNotFoundError:
         c = {}
+    except json.decoder.JSONDecodeError as e:
+        print(f"WARNING: config.json is malformed ({e}). Falling back to environment variables.")
+        c = {}
 
     # Override with environment variables if present
     c['bot_token'] = os.getenv('BOT_TOKEN', c.get('bot_token'))
     c['bot_username'] = os.getenv('BOT_USERNAME', c.get('bot_username'))
-    c['aes_key'] = os.getenv('AES_KEY', c.get('aes_key'))
+    c['aes_key'] = os.getenv('AES_KEY', c.get('aes_key', ''))
     c['local_api_server'] = os.getenv('LOCAL_API_SERVER', c.get('local_api_server'))
     # Use the mounted volume directory by default if running in Docker, otherwise it creates a local 'database' folder
     c['db_url'] = os.getenv('DB_URL', c.get('db_url', 'sqlite+aiosqlite:///database/bot_database.db'))
@@ -73,6 +92,8 @@ async def init_db():
 # The key needs to be a 32-byte url-safe base64-encoded string.
 # If the user put a dummy string, we should handle it or fail gracefully.
 try:
+    if not config.get('aes_key'):
+        raise ValueError("No AES key provided")
     cipher_suite = Fernet(config['aes_key'].encode())
 except ValueError:
     print("WARNING: Invalid AES key in config.json. Using a temporary key for this session.")

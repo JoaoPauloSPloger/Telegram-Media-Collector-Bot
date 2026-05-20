@@ -1,3 +1,19 @@
+# Telegram Media Collector Bot
+# Copyright (C) 2026 Vulpes Tech
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 import asyncio
 import re
 import os
@@ -219,7 +235,11 @@ async def process_download(message: Message, db_user, url: str, lang: str, downl
         return
 
     try:
-        await status_msg.edit_text(f"{SPINNER_FRAMES[0]} {get_text(locales, lang, 'status_analyzing')}", reply_markup=cancel_kb)
+        empty_bar = get_progress_bar(0.0)
+        analyzing_text = f"{SPINNER_FRAMES[0]} {get_text(locales, lang, 'status_analyzing')}\n"
+        analyzing_text += f"{empty_bar}\n"
+        analyzing_text += "ETA: --- | Speed: --- MB/s"
+        await status_msg.edit_text(analyzing_text, reply_markup=cancel_kb)
     except TelegramAPIError:
         pass
 
@@ -263,11 +283,22 @@ async def process_download(message: Message, db_user, url: str, lang: str, downl
                     except TelegramAPIError:
                         pass # Ignore "Message is not modified" errors
                 elif data['status'] == 'finished':
+                    # We keep this as is, but handle_upload handles its own uploading UI
                     try:
                         await status_msg.edit_text(f"✅ {get_text(locales, lang, 'status_uploading')}")
                     except TelegramAPIError:
                         pass
                     break
+            else:
+                # Still analyzing, animate the analyzing state
+                try:
+                    empty_bar = get_progress_bar(0.0)
+                    text = f"{spinner} {get_text(locales, lang, 'status_analyzing')}\n"
+                    text += f"{empty_bar}\n"
+                    text += "ETA: --- | Speed: --- MB/s"
+                    await status_msg.edit_text(text, reply_markup=cancel_kb)
+                except TelegramAPIError:
+                    pass
             
             await asyncio.sleep(2) # Update every 2 seconds to avoid rate limits
             
@@ -353,12 +384,9 @@ async def process_download(message: Message, db_user, url: str, lang: str, downl
             event.status = 'downloaded'
             await session.commit()
             
-    # Clean up status message temporarily
-    await status_msg.delete()
-    
-    # Next step: Upload and Finalization
+    # Pass status_msg to handle_upload so it can animate the upload process instead of deleting it
     from src.handlers.upload import handle_upload
-    await handle_upload(message, result, event_id, db_user)
+    await handle_upload(message, result, event_id, db_user, status_msg=status_msg)
 
 import aiogram
 @router.callback_query(lambda c: c.data.startswith('doc_'))
@@ -451,12 +479,9 @@ async def process_document_request(callback_query: aiogram.types.CallbackQuery, 
             await status_msg.edit_text(f"❌ {display_msg} (ID: {event_id})")
             return
         
-    # Clean up status message
-    await status_msg.delete()
-    
-    # Next step: Upload and Finalization
+    # Pass status_msg to handle_upload
     from src.handlers.upload import handle_upload
-    await handle_upload(callback_query.message, result, event_id, db_user, is_document=True)
+    await handle_upload(callback_query.message, result, event_id, db_user, is_document=True, status_msg=status_msg)
 
 @router.callback_query(lambda c: c.data.startswith('cancel_'))
 async def process_cancel_request(callback_query: aiogram.types.CallbackQuery, db_user):

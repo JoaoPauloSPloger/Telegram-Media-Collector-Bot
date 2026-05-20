@@ -24,3 +24,6 @@ dependencies = [
 
 [project.urls]
 "Homepage" = "https://github.com/yourusername/telegram-downloader-bot"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
