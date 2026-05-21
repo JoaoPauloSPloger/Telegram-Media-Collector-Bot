@@ -38,6 +38,9 @@ COPY . .
 # Create directories
 RUN mkdir -p downloads database
 
+# Copy backup of database if it exists
+RUN if [ -f database/bot_database.db ]; then cp database/bot_database.db /app/bot_database_backup.db; fi
+
 # Copy entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh && \

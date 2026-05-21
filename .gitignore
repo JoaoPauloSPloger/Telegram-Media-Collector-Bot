@@ -5,3 +5,7 @@ downloads/
 config.json
 .env
 key.txt
+*.db-wal
+*.db-shm
+database/database_export.json
+/tmp

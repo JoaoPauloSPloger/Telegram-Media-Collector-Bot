@@ -79,7 +79,6 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
     
     # Helper to send with fallback if message is deleted or bot kicked
     async def send_media(method_name, **kwargs):
-        from aiogram.exceptions import TelegramAPIError
         try:
             # Try replying
             func = getattr(original_message, f"reply_{method_name}")
@@ -249,7 +248,6 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
                 
     except Exception as e:
         # Fallback error messaging
-        from aiogram.exceptions import TelegramAPIError
         try:
             await original_message.reply(f"❌ Error uploading video: {e}")
         except TelegramAPIError as api_err:
