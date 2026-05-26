@@ -105,10 +105,17 @@ async def show_stats(message: Message):
 
 @router.callback_query(lambda c: c.data == "close_stats")
 async def close_stats(callback_query):
+    try:
+        await callback_query.answer()
+    except TelegramAPIError:
+        pass # Ignore query is too old error
+
     msg_id = callback_query.message.message_id
     if msg_id in active_panels:
         active_panels[msg_id] = False
         del active_panels[msg_id]
 
-    await callback_query.message.edit_text("✅ Dashboard closed.")
-    await callback_query.answer()
+    try:
+        await callback_query.message.edit_text("✅ Dashboard closed.")
+    except TelegramAPIError:
+        pass

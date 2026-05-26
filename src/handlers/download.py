@@ -30,6 +30,7 @@ from src.utils.i18n import load_locales, get_text
 from src.utils.queue_manager import queue_manager
 from src.utils.cache import get_cached_file_id
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.exceptions import TelegramAPIError
 
 router = Router()
 locales = load_locales()
@@ -244,6 +245,7 @@ async def process_download(message: Message, db_user, url: str, lang: str, downl
     ]])
 
     try:
+        from aiogram.exceptions import TelegramAPIError
         status_msg = await message.reply(f"⏳ In queue...", reply_markup=cancel_kb)
     except TelegramAPIError as e:
         if "message to reply not found" in str(e).lower():

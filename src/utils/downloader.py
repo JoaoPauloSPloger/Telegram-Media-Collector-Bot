@@ -146,10 +146,12 @@ async def download_video(url: str, cookies_path: str = None, event_id: str = Non
         ydl_opts['merge_output_format'] = 'mp4'
         ydl_opts['writesubtitles'] = True
         ydl_opts['subtitlesformat'] = 'srt'
+        ydl_opts['postprocessor_args'] = ['-movflags', '+faststart']
     else:
         # Default Video
         ydl_opts['format'] = 'bestvideo[vcodec^=avc][ext=mp4]+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
         ydl_opts['merge_output_format'] = 'mp4'
+        ydl_opts['postprocessor_args'] = ['-movflags', '+faststart']
 
     if download_range:
         start_time, end_time = download_range
@@ -196,12 +198,35 @@ async def download_video(url: str, cookies_path: str = None, event_id: str = Non
                 if not isinstance(description, str):
                     description = ''
 
+                chapters_text = ""
+                chapters = info.get('chapters')
+                if chapters:
+                    # Do not use HTML tags here, because upload.py will html.escape() the entire description
+                    chapters_text = "\n\n⏱ Chapters:\n"
+                    for chapter in chapters:
+                        start_time = int(chapter.get('start_time', 0))
+                        title = chapter.get('title', '')
+                        # Format as MM:SS or HH:MM:SS
+                        m, s = divmod(start_time, 60)
+                        h, m = divmod(m, 60)
+                        if h > 0:
+                            timestamp = f"{h:02d}:{m:02d}:{s:02d}"
+                        else:
+                            timestamp = f"{m:02d}:{s:02d}"
+                        chapters_text += f"{timestamp} - {title}\n"
+
+                # Add chapters to description
+                if chapters_text:
+                    # Truncate description more aggressively if we have chapters so they fit
+                    description = description[:200] + "\n..." if len(description) > 200 else description
+                    description += chapters_text
+
                 return {
                     'success': True,
                     'url': url,
                     'filepath': filepath,
                     'title': info.get('title', 'Unknown Title'),
-                    'description': description[:500], # truncate desc
+                    'description': description[:800], # truncate desc with chapters included
                     'duration': info.get('duration', 0)
                 }
         except DownloadError as e:

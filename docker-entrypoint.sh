@@ -17,13 +17,6 @@
 
 set -e
 
-# Check if database exists in volume, if not copy backup if available
-if [ ! -f "/app/database/bot_database.db" ] && [ -f "/app/bot_database_backup.db" ]; then
-    echo "No database found in volume. Restoring from backup..."
-    cp /app/bot_database_backup.db /app/database/bot_database.db
-    echo "Restore complete."
-fi
-
 # Change ownership of mounted volumes
 chown -R botuser:botuser /app/database
 chown -R botuser:botuser /app/downloads

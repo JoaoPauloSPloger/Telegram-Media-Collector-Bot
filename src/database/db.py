@@ -51,25 +51,9 @@ config = load_config()
 if config['db_url'].startswith('sqlite+aiosqlite:///database/'):
     os.makedirs('database', exist_ok=True)
 
-from sqlalchemy import event
-
 # Database setup
-engine = create_async_engine(
-    config['db_url'],
-    echo=False,
-    connect_args={
-        "timeout": 30.0
-    }
-)
+engine = create_async_engine(config['db_url'], echo=False)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
-
-@event.listens_for(engine.sync_engine, "connect")
-def configure_sqlite_pragmas(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA synchronous=NORMAL")
-    cursor.execute("PRAGMA busy_timeout=30000")
-    cursor.close()
 
 async def init_db():
     async with engine.begin() as conn:
