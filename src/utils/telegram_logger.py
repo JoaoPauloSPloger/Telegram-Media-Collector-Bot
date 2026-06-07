@@ -16,42 +16,64 @@
 
 import logging
 import asyncio
+import sys
+import os
+import html
 from aiogram import Bot
 
+# Ensure LLM path is reachable
+sys.path.append(os.path.abspath('.'))
+
 class TelegramLogHandler(logging.Handler):
+    """
+    Custom logging handler that routes log records to a specified Telegram channel/chat,
+    including automated LLM-powered diagnostics for ERROR events.
+    """
     def __init__(self, bot: Bot, chat_id: str):
         super().__init__()
         self.bot = bot
         self.chat_id = chat_id
 
     def emit(self, record):
+        """
+        Emits a log record, sending it asynchronously to Telegram, and triggers LLM diagnostics if level is ERROR.
+        """
         log_entry = self.format(record)
 
-        # Don't log if chat_id is missing
         if not self.chat_id:
             return
 
-        import html
-
         async def send_log():
             try:
-                # Telegram has a 4096 char limit
                 escaped_log = html.escape(log_entry[:4000])
                 msg = f"<b>System Log [{record.levelname}]</b>\n<pre>{escaped_log}</pre>"
                 await self.bot.send_message(chat_id=self.chat_id, text=msg, parse_mode="HTML")
+
+                if record.levelname == 'ERROR':
+                    try:
+                        from LLM.insight import get_llm_insight
+
+                        insight = await get_llm_insight(log_entry)
+                        if insight:
+                            insight_msg = f"🤖 **LLM Insight:**\n\n{insight}"
+
+                            chunk_size = 4000
+                            for i in range(0, len(insight_msg), chunk_size):
+                                await self.bot.send_message(
+                                    chat_id=self.chat_id,
+                                    text=insight_msg[i:i+chunk_size],
+                                    parse_mode="Markdown"
+                                )
+                    except Exception as llm_err:
+                        print(f"LLM Insight failed silently: {llm_err}")
+
             except Exception as e:
-                # Fallback to standard print if telegram send fails (avoid recursion)
                 print(f"Failed to send log to Telegram: {e}")
 
-        # Check if we have a running event loop
         try:
             loop = asyncio.get_running_loop()
             loop.create_task(send_log())
         except RuntimeError:
-            # No running event loop (e.g. from a background thread).
-            # We can use asyncio.run_coroutine_threadsafe if we know the main loop,
-            # or simply run it synchronously if we don't care about blocking the thread.
-            # Since this is for errors, it's safer to just run it.
             try:
                 asyncio.run(send_log())
             except Exception:

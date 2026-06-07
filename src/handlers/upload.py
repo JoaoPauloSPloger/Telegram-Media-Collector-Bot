@@ -17,91 +17,208 @@
 import os
 import html
 import glob
+import asyncio
+import time
+import subprocess
+import json
+import logging
 from aiogram import Router
 from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.exceptions import TelegramAPIError
 from src.database.db import AsyncSessionLocal, Event, config
 from src.utils.i18n import load_locales, get_text
 from src.utils.cache import set_cached_file_id
+from src.utils.downloader import get_progress_bar
 
 router = Router()
 locales = load_locales()
 
-import asyncio
-import time
-from aiogram.exceptions import TelegramAPIError
-from src.utils.downloader import get_progress_bar
-
 SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
+async def ensure_apple_compatibility(filepath: str) -> str:
+    """
+    Check if a video file codec is Apple-compatible and remuxes/transcodes it
+    using ffmpeg if necessary, ensuring faststart flags are set.
+
+    Args:
+        filepath (str): The local path of the video file to verify.
+
+    Returns:
+        str: The path to the verified/re-encoded file.
+    """
+    if not filepath or not isinstance(filepath, str):
+        return filepath
+
+    try:
+        if not os.path.exists(filepath):
+            return filepath
+    except TypeError:
+        return filepath
+
+    ext = filepath.split('.')[-1].lower()
+    if ext not in ['mp4', 'mkv', 'mov', 'webm']:
+        return filepath
+
+    try:
+        probe_cmd = [
+            'ffprobe', '-v', 'error', '-select_streams', 'v:0',
+            '-show_entries', 'stream=codec_name', '-of', 'default=noprint_wrappers=1:nokey=1',
+            filepath
+        ]
+
+        process = await asyncio.create_subprocess_exec(*probe_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = await process.communicate()
+        codec = stdout.decode().strip()
+
+        needs_reencode = False
+        if codec and codec not in ['h264', 'avc1']:
+            needs_reencode = True
+        elif not codec:
+            return filepath
+
+        fixed_filepath = f"{filepath}_apple_fixed.mp4"
+
+        if needs_reencode:
+            vcodec_args = ['-c:v', 'libx264', '-preset', 'superfast']
+        else:
+            vcodec_args = ['-c:v', 'copy']
+
+        if ext in ['mkv', 'webm']:
+            acodec_args = ['-c:a', 'aac']
+        else:
+            acodec_args = ['-c:a', 'copy']
+
+        fix_cmd = [
+            'ffmpeg', '-y', '-i', filepath,
+            *vcodec_args, *acodec_args, '-movflags', '+faststart',
+            fixed_filepath
+        ]
+
+        fix_process = await asyncio.create_subprocess_exec(*fix_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        await fix_process.communicate()
+
+        if fix_process.returncode == 0 and os.path.exists(fixed_filepath):
+            os.remove(filepath)
+            return fixed_filepath
+
+    except Exception as e:
+        print(f"Error ensuring Apple compatibility: {e}")
+
+    return filepath
+
 async def handle_upload(original_message: Message, result: dict, event_id: str, db_user, is_document: bool = False, status_msg: Message = None):
+    """
+    Format metadata, construct message captions, update DB status, and upload
+    the downloaded media file to Telegram. Shows upload progress animations
+    and provides fallback handling.
+
+    Args:
+        original_message (Message): The original Telegram command or query message.
+        result (dict): The dictionary containing file information and metadata.
+        event_id (str): The unique ID of the download event.
+        db_user: The database user object.
+        is_document (bool): If True, forces the upload as a generic document/file.
+        status_msg (Message): Optional status message to edit with progress animations.
+    """
+    logging.info(f'Entered handle_upload with result: {result}')
     lang = db_user.language_code if db_user else 'en'
     
     filepath = result['filepath']
     
-    # Fix: Sometimes yt-dlp returns a filepath but actually saves it with a different extension
-    # (e.g. merging mkv, webm to mp4). Let's use glob to find the actual file.
-    if not os.path.exists(filepath):
-        # The file is saved as downloads/{event_id}_TITLE.ext
-        # We can search for any file starting with downloads/{event_id}_
+    if filepath and not os.path.exists(filepath):
         search_pattern = f"downloads/{event_id}_*"
         matches = glob.glob(search_pattern)
-        # Filter out .part files (incomplete downloads)
         valid_matches = [m for m in matches if not m.endswith('.part') and not m.endswith('.ytdl')]
         
         if valid_matches:
             filepath = valid_matches[0]
             
+    postprocess_task = None
+    if status_msg and filepath and filepath.split('.')[-1].lower() in ['mp4', 'mkv', 'mov', 'webm']:
+        async def animate_postprocess():
+            spinner_idx = 0
+            try:
+                while True:
+                    spinner_idx = (spinner_idx + 1) % len(SPINNER_FRAMES)
+                    spinner = SPINNER_FRAMES[spinner_idx]
+
+                    text = f"{spinner} ⚙️ Post-processing to ensure quality...\n"
+                    text += f"Please wait, this may take a moment."
+
+                    try:
+                        await status_msg.edit_text(text)
+                    except TelegramAPIError:
+                        pass
+
+                    await asyncio.sleep(2)
+            except asyncio.CancelledError:
+                pass
+
+        postprocess_task = asyncio.create_task(animate_postprocess())
+
+    try:
+        filepath = await ensure_apple_compatibility(filepath)
+    finally:
+        if postprocess_task:
+            postprocess_task.cancel()
     title = html.escape(result['title'])
     description = result.get('description', '') or ''
     
-    # Truncate description to prevent exceeding Telegram's 1024 char caption limit
-    if len(description) > 850:
-        description = description[:847] + "..."
+    bot_username = html.escape(config.get('bot_username', 'DownloaderBot'))
+    disclaimer = get_text(locales, lang, "disclaimer_footer")
+
+    base_caption = f"🎬 <b>{html.escape(title)}</b>\n\n"
+    footer_caption = f"ID: {event_id}\n🤖 @{bot_username}\n\n{disclaimer}"
+
+    max_caption_len = 1024
+    available_space = max_caption_len - len(base_caption) - len(footer_caption) - 30
+
+    if len(description) > available_space:
+        import re
+        timestamp_lines = []
+        for line in description.split('\n'):
+            if re.search(r'\b\d{1,2}:\d{2}(?::\d{2})?\b', line):
+                timestamp_lines.append(line)
+
+        if timestamp_lines:
+            ts_desc = "\n".join(timestamp_lines)
+            if len(ts_desc) <= available_space:
+                description = ts_desc
+            else:
+                description = ts_desc[:available_space - 3] + "..."
+        else:
+            description = description[:available_space - 3] + "..."
 
     description = html.escape(description)
-        
-    bot_username = html.escape(config.get('bot_username', 'DownloaderBot'))
     
-    # Check if file exists
-    if not os.path.exists(filepath):
+    if not filepath or not os.path.exists(filepath):
         await original_message.answer("❌ Error: File not found after download.")
         return
         
     file_size_mb = os.path.getsize(filepath) / (1024 * 1024)
     
-    # Prepare caption
-    disclaimer = get_text(locales, lang, "disclaimer_footer")
-    caption = f"🎬 <b>{title}</b>\n\n"
+    caption = base_caption
     if description:
         caption += f"<blockquote>{description}</blockquote>\n\n"
-        
-    caption += f"ID: {event_id}\n"
-    caption += f"🤖 @{bot_username}\n\n"
-    caption += f"{disclaimer}"
+    caption += footer_caption
     
-    # Helper to send with fallback if message is deleted or bot kicked
     async def send_media(method_name, **kwargs):
         from aiogram.exceptions import TelegramAPIError
         try:
-            # Try replying
             func = getattr(original_message, f"reply_{method_name}")
             return await func(**kwargs)
         except TelegramAPIError as e:
             if "message to reply not found" in str(e).lower() or "message is not modified" in str(e).lower():
                 try:
-                    # Message deleted, try sending to the same chat
                     func = getattr(original_message, f"answer_{method_name}")
                     return await func(**kwargs)
                 except TelegramAPIError:
-                    # Chat deleted or bot kicked, send to user private chat
                     func = getattr(original_message.bot, f"send_{method_name}")
                     return await func(chat_id=original_message.from_user.id, **kwargs)
             else:
-                # Chat deleted or bot kicked, send to user private chat directly
                 func = getattr(original_message.bot, f"send_{method_name}")
                 return await func(chat_id=original_message.from_user.id, **kwargs)
 
-    # Start background upload UI animation
     upload_ui_task = None
     if status_msg:
         async def animate_upload():
@@ -113,9 +230,6 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
                     spinner = SPINNER_FRAMES[spinner_idx]
                     elapsed = time.time() - start_time
 
-                    # Telegram does not give us a streaming upload hook natively without writing a custom FS wrapper,
-                    # so we will simulate progress based on typical upload speeds (e.g. 5-10MB/s) as an approximation
-                    # assuming a very conservative 2MB/s upload speed for the animation ETA.
                     assumed_speed_mb = 2.0
                     assumed_duration = file_size_mb / assumed_speed_mb if file_size_mb > 0 else 1
 
@@ -138,12 +252,10 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
 
         upload_ui_task = asyncio.create_task(animate_upload())
 
-    # Send the media based on file type or if it's explicitly requested as document
     try:
         file_input = FSInputFile(filepath)
         ext = filepath.split('.')[-1].lower()
         
-        # Conversion buttons for downloaded files
         buttons = [
             [InlineKeyboardButton(text=get_text(locales, lang, "get_full_file"), callback_data=f"doc_{event_id}")]
         ]
@@ -157,10 +269,6 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
             msg = await send_media("document", document=file_input, caption=caption, parse_mode="HTML")
             await set_cached_file_id(result['url'], 'doc', msg.document.file_id, title=title, description=description)
         elif ext in ['mp4', 'mkv', 'webm', 'mov']:
-            # Extract video metadata to ensure streaming works and previews display correctly
-            import subprocess
-            import json
-
             width = result.get('width', 0)
             height = result.get('height', 0)
             duration = result.get('duration', 0)
@@ -186,7 +294,6 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
 
             duration = int(duration)
 
-            # Generate thumbnail using ffmpeg
             thumb_path = f"{filepath}_thumb.jpg"
             try:
                 subprocess.run(['ffmpeg', '-i', filepath, '-ss', '00:00:01.000', '-vframes', '1', thumb_path, '-y'],
@@ -210,10 +317,8 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
                 thumbnail=thumb_input
             )
             await set_cached_file_id(result['url'], 'video', msg.video.file_id, title=title, description=description)
-            # Pre-populate conversion cache so the inline buttons work immediately
             await set_cached_file_id(f"temp_{event_id}", "upload", msg.video.file_id)
 
-            # Clean up thumbnail
             if os.path.exists(thumb_path):
                 os.remove(thumb_path)
 
@@ -226,23 +331,18 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
             await set_cached_file_id(result['url'], 'audio', msg.audio.file_id, title=title, description=description)
             await set_cached_file_id(f"temp_{event_id}", "upload", msg.audio.file_id)
         else:
-            # Fallback to document for any other format
             msg = await send_media("document", document=file_input, caption=caption, parse_mode="HTML")
             await set_cached_file_id(result['url'], 'doc', msg.document.file_id, title=title, description=description)
             await set_cached_file_id(f"temp_{event_id}", "upload", msg.document.file_id)
         
-        # Log to media logging channel
         media_logging_channel_id = config.get('media_logging_channel_id')
         if media_logging_channel_id:
             try:
                 log_caption = f"👤 User: {original_message.from_user.id} (@{original_message.from_user.username})\n🔗 URL: {result['url']}\n✅ Status: Success"
-                # Send using the message we just sent (which has the file_id) to avoid re-uploading
                 await msg.copy_to(chat_id=media_logging_channel_id, caption=log_caption, reply_markup=None)
             except Exception as e:
-                import logging
                 logging.error(f"Failed to log media to channel: {e}")
 
-        # Update Event DB
         async with AsyncSessionLocal() as session:
             event = await session.get(Event, event_id)
             if event:
@@ -250,7 +350,6 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
                 await session.commit()
                 
     except Exception as e:
-        # Fallback error messaging
         from aiogram.exceptions import TelegramAPIError
         try:
             await original_message.reply(f"❌ Error uploading video: {e}")
@@ -266,14 +365,12 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
                 except Exception:
                     pass
 
-        # Log error to media logging channel
         media_logging_channel_id = config.get('media_logging_channel_id')
         if media_logging_channel_id:
             try:
                 log_text = f"👤 User: {original_message.from_user.id} (@{original_message.from_user.username})\n🔗 URL: {result['url']}\n❌ Status: Failed\nError: {e}"
                 await original_message.bot.send_message(chat_id=media_logging_channel_id, text=log_text)
             except Exception as log_e:
-                import logging
                 logging.error(f"Failed to log error to media channel: {log_e}")
 
         async with AsyncSessionLocal() as session:
@@ -290,7 +387,6 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
             except TelegramAPIError:
                 pass
 
-        # Clean up ALL local files matching this event_id (including temp parts)
         search_pattern = f"downloads/{event_id}_*"
         for match in glob.glob(search_pattern):
             try:

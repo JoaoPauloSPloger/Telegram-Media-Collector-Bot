@@ -27,14 +27,15 @@ router = Router()
 
 @router.message(F.video | F.audio | F.document | F.voice)
 async def handle_media_message(message: Message, db_user):
+    """
+    Message handler for incoming media, presenting conversion format selection buttons in private chat.
+    """
     if not db_user:
         return
 
-    # Only allow conversion in private chats to prevent spam in groups
     if message.chat.type != 'private':
         return
 
-    # Check if the file is valid for conversion
     file_id = None
     media_type = None
     if message.video:
@@ -69,8 +70,7 @@ async def handle_media_message(message: Message, db_user):
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
 
-    # Store temporary context info (just mapping event_id to file_id so the callback knows what to download)
-    from src.utils.cache import set_cached_file_id # reusing this to store temp file_id
+    from src.utils.cache import set_cached_file_id
     await set_cached_file_id(f"temp_{event_id}", "upload", file_id)
 
     await message.reply("⚙️ What would you like to convert this file to?", reply_markup=keyboard)
@@ -78,6 +78,9 @@ async def handle_media_message(message: Message, db_user):
 
 @router.callback_query(lambda c: c.data.startswith('conv_'))
 async def process_conversion(callback_query: CallbackQuery, db_user):
+    """
+    Callback query handler that runs the conversion process using ffmpeg and replies with the converted file.
+    """
     parts = callback_query.data.split('_', 2)
     if len(parts) < 3:
         return
@@ -85,7 +88,6 @@ async def process_conversion(callback_query: CallbackQuery, db_user):
     target_format = parts[1]
     event_id = parts[2]
 
-    # Retrieve the file_id from temp cache
     from src.utils.cache import get_cached_file_id, delete_cached_file_id
     temp_url = f"temp_{event_id}"
     file_id, _, _ = await get_cached_file_id(temp_url, "upload")
@@ -95,7 +97,7 @@ async def process_conversion(callback_query: CallbackQuery, db_user):
         return
 
     await callback_query.answer()
-    await delete_cached_file_id(temp_url, "upload") # Clean up DB
+    await delete_cached_file_id(temp_url, "upload")
     status_msg = await callback_query.message.edit_text("⏳ Downloading file...")
 
     os.makedirs("downloads", exist_ok=True)
@@ -103,13 +105,11 @@ async def process_conversion(callback_query: CallbackQuery, db_user):
     output_path = f"downloads/output_{event_id}.{target_format}"
 
     try:
-        # Download the file using aiogram's bot object
         file_info = await callback_query.bot.get_file(file_id)
 
-        # Check size (if using local API server, size limits are higher)
         from src.database.db import config
         is_local_api = bool(config.get('local_api_server'))
-        if not is_local_api and file_info.file_size > 20000000: # 20MB limit for cloud bot downloading
+        if not is_local_api and file_info.file_size > 20000000:
             await status_msg.edit_text("❌ File is too large to download (20MB limit without Local API).")
             return
 
@@ -117,7 +117,6 @@ async def process_conversion(callback_query: CallbackQuery, db_user):
 
         await status_msg.edit_text(f"⚙️ Converting to {target_format.upper()}...")
 
-        # Perform conversion
         def run_conversion():
             if target_format == 'mp3':
                 cmd = ['ffmpeg', '-y', '-i', input_path, '-vn', '-ar', '44100', '-ac', '2', '-b:a', '192k', output_path]
@@ -151,7 +150,6 @@ async def process_conversion(callback_query: CallbackQuery, db_user):
     except Exception as e:
         await status_msg.edit_text(f"❌ Error: {e}")
     finally:
-        # Cleanup
         for path in [input_path, output_path]:
             if os.path.exists(path):
                 try:

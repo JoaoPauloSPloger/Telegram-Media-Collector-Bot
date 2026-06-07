@@ -42,4 +42,10 @@ This service is provided "as is" for educational and personal use only. You are 
 
 @router.message(Command("privacy", "tos"))
 async def show_privacy(message: Message):
+    """
+    Handle the /privacy and /tos commands to display the privacy policy and terms of service.
+
+    Args:
+        message (Message): The incoming Telegram message triggering the command.
+    """
     await message.answer(PRIVACY_TEXT, parse_mode="Markdown")

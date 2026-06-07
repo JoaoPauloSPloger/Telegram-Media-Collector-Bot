@@ -14,6 +14,10 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+"""
+Database models definition using SQLAlchemy declarative base.
+"""
+
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Table
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -27,20 +31,28 @@ user_groups = Table(
 )
 
 class User(Base):
+    """
+    Represents a Telegram user, storing preferences, cookie settings, and administrative privileges.
+    """
     __tablename__ = 'users'
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=True)
     username = Column(String, nullable=True)
     eula_agreed = Column(Boolean, default=False)
-    user_dc = Column(Integer, nullable=True) # or country string
+    user_dc = Column(Integer, nullable=True)
     language_code = Column(String, nullable=True)
     use_cookies = Column(Boolean, default=False)
     encrypted_cookies = Column(String, nullable=True)
+    admin_level = Column(Integer, default=0)
+    admin_password = Column(String, nullable=True)
     
     groups = relationship('Group', secondary=user_groups, back_populates='members')
 
 class Group(Base):
+    """
+    Represents a Telegram group or supergroup linked to users for telemetry.
+    """
     __tablename__ = 'groups'
 
     id = Column(Integer, primary_key=True)
@@ -51,19 +63,25 @@ class Group(Base):
     members = relationship('User', secondary=user_groups, back_populates='groups')
 
 class Event(Base):
+    """
+    Represents a download event trackable for logging and queuing purposes.
+    """
     __tablename__ = 'events'
 
     event_id = Column(String, primary_key=True)
     user_id = Column(Integer, ForeignKey('users.id'))
     url = Column(String, nullable=False)
-    status = Column(String, nullable=False) # e.g., 'started', 'completed', 'failed'
-    error_msg = Column(String, nullable=True) # Full technical error
+    status = Column(String, nullable=False)
+    error_msg = Column(String, nullable=True)
 
 class Cache(Base):
+    """
+    Caches previously downloaded file IDs from Telegram to allow direct inline delivery.
+    """
     __tablename__ = 'cache'
 
     url = Column(String, primary_key=True)
-    media_type = Column(String, primary_key=True)  # 'video', 'audio', 'doc', etc.
+    media_type = Column(String, primary_key=True)
     file_id = Column(String, nullable=False)
     title = Column(String, nullable=True)
     description = Column(String, nullable=True)

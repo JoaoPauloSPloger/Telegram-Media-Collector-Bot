@@ -13,11 +13,23 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 """
-Route handlers package initialization.
+Extractors registry module organizing and sorting download components in order of matching priority.
 """
 
-from . import start
-from . import settings
-from . import download
-from . import upload
+from .ytdlp import YtDlpExtractor
+from .spotdl import SpotDlExtractor
+from .cobalt import CobaltExtractor
+from .gallerydl import GalleryDlExtractor
+from .tikwm import TikWmExtractor
+from .scraper import ScraperExtractor
+
+extractors_registry = [
+    SpotDlExtractor(),
+    TikWmExtractor(),
+    YtDlpExtractor(),
+    CobaltExtractor(),
+    GalleryDlExtractor(),
+    ScraperExtractor()
+]

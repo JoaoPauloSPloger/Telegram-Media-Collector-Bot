@@ -23,6 +23,10 @@ from src.database.db import init_db, config
 from src.handlers import start
 
 async def main():
+    """
+    Initializes database, configures logging to Telegram, registers middlewares/routers,
+    and starts the aiogram polling loop.
+    """
     logging.basicConfig(level=logging.INFO)
     
     await init_db()
@@ -44,7 +48,7 @@ async def main():
     if sys_logging_channel_id:
         from src.utils.telegram_logger import TelegramLogHandler
         telegram_handler = TelegramLogHandler(bot, sys_logging_channel_id)
-        telegram_handler.setLevel(logging.ERROR) # Let's only send ERRORS to avoid spam
+        telegram_handler.setLevel(logging.ERROR)
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         telegram_handler.setFormatter(formatter)
         logging.getLogger().addHandler(telegram_handler)
@@ -70,7 +74,6 @@ async def main():
     from src.handlers import admin
     dp.include_router(admin.router)
 
-    # Register middleware
     from src.middlewares.eula import EulaMiddleware
     dp.message.middleware(EulaMiddleware())
     dp.callback_query.middleware(EulaMiddleware())
@@ -80,7 +83,6 @@ async def main():
         await dp.start_polling(bot)
     finally:
         await bot.session.close()
-        # Close database engine gracefully
         from src.database.db import engine
         await engine.dispose()
 

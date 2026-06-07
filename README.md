@@ -9,6 +9,8 @@ Telegram Media Collector is a powerful bot for downloading and converting media 
 - **Media Conversion & Clipping:** Extract audio to MP3/WAV, convert videos to GIFs, and clip specific timestamps directly in chat.
 - **Live Progress UI:** ASCII progress bar and speed tracking edit the status message live.
 - **SQLite Database with Telemetry:** Secure, SQL-Injection-proof database tracking users and system metrics.
+- **Admin Hierarchy & Queue Management:** Master, Admin, and Aspiring admin levels with randomized, encrypted passwords. Admins can manage users, broadcast messages, and cancel long queues via deep links.
+- **LLM Error Insights:** Automatically forwards `ERROR` logs to a configured LLM (OpenAI, Anthropic, Gemini, Groq, or Local) and posts an actionable insight to the logging channel.
 
 ## Commands List
 
@@ -21,6 +23,7 @@ Telegram Media Collector is a powerful bot for downloading and converting media 
 - `/dl [url]` or `/download [url]` - Main command to download media from a given URL.
 - `/audio [url]` or `/mp3 [url]` - Forces the bot to download the media as an audio file.
 - `/clip [start] [end] [url]` or `/cut` - Clips a specific section of a video/audio (e.g., `/clip 1:00 2:00 https://...`).
+- `/cancelAll` - Cancels all active and queued downloads for the user.
 - *Note: Sending a URL directly to the chat also triggers the standard download. Sending video/audio/document files directly will prompt the conversion menu.*
 
 ### Settings & Authentication
@@ -29,6 +32,12 @@ Telegram Media Collector is a powerful bot for downloading and converting media 
 
 ### System & Administration
 - `/stats` - Displays a live dashboard with system metrics (CPU, RAM, Disk, Network) and bot usage statistics.
+- `/addadmin <user_id> <level> [master_password]` - Promotes a user to a specific admin level (1=Master, 2=Admin, 3=Aspiring).
+- `/promote <user_id>`, `/demote <user_id>`, `/dismiss <user_id>` - Adjusts a user's admin rank.
+- `/regenpsw <user_id>` - Regenerates a secure random password for the admin and DMs it to them.
+- `/broadcast <password> <message>` - Sends a global message to all users in the database.
+- `/shutdown` or `/restart` - Safely shuts down or restarts the Docker container.
+- *Note: All admin commands can also be run interactively. The bot will automatically prompt for the password if omitted, and then securely delete your response.*
 
 ---
 
@@ -73,6 +82,8 @@ cp .env.example .env
 * `BOT_TOKEN` from [@BotFather](https://t.me/botfather)
 * `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` from [my.telegram.org](https://my.telegram.org)
 * Generate a new AES key: `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+* Configure `QUEUE_ALERT_THRESHOLD`, `MAX_PLAYLIST_ITEMS`, and `MAX_BANDWIDTH` to suit your server limits.
+* (Optional) Configure `LLM_PROVIDER` and `LLM_API_KEY` to enable error log insights in your admin channel.
 
 
 4. Start the containers:

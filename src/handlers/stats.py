@@ -30,6 +30,13 @@ start_time = time.time()
 active_panels = {}
 
 def get_system_metrics():
+    """
+    Retrieve current system resource statistics including CPU, virtual memory,
+    disk percentage, network I/O stats, and uptime.
+
+    Returns:
+        tuple: (cpu_percent, ram_percent, disk_percent, net_sent_mb, net_recv_mb, uptime_str)
+    """
     cpu = psutil.cpu_percent(interval=None)
     ram = psutil.virtual_memory().percent
     disk = psutil.disk_usage('/').percent
@@ -46,12 +53,35 @@ def get_system_metrics():
     return cpu, ram, disk, net_sent, net_recv, uptime_str
 
 async def get_db_metrics():
+    """
+    Retrieve database metrics containing the total number of registered users
+    and total download events.
+
+    Returns:
+        tuple: (users_count, events_count)
+    """
     async with AsyncSessionLocal() as session:
         users_count = await session.scalar(select(func.count()).select_from(User))
         events_count = await session.scalar(select(func.count()).select_from(Event))
         return users_count or 0, events_count or 0
 
 def format_stats(cpu, ram, disk, net_sent, net_recv, uptime, users_count, events_count):
+    """
+    Format system and database metrics into a user-friendly HTML message.
+
+    Args:
+        cpu (float): CPU usage percentage.
+        ram (float): RAM usage percentage.
+        disk (float): Disk usage percentage.
+        net_sent (float): Sent data in MB.
+        net_recv (float): Received data in MB.
+        uptime (str): System uptime string.
+        users_count (int): Total database users.
+        events_count (int): Total database download events.
+
+    Returns:
+        str: Formatted HTML text for the statistics dashboard.
+    """
     return (
         f"📊 <b>Admin Live Dashboard</b>\n\n"
         f"🖥 <b>System</b>\n"
@@ -69,7 +99,18 @@ def format_stats(cpu, ram, disk, net_sent, net_recv, uptime, users_count, events
     )
 
 @router.message(Command("stats"))
-async def show_stats(message: Message):
+async def show_stats(message: Message, db_user):
+    """
+    Handle the /stats command. Verifies admin authorization, presents the initial dashboard,
+    and initiates a background task to refresh the metrics every 5 seconds.
+
+    Args:
+        message (Message): The Telegram command message.
+        db_user: The database user object.
+    """
+    if not db_user or db_user.admin_level not in [1, 2]:
+        return
+
     cpu, ram, disk, net_sent, net_recv, uptime = get_system_metrics()
     users_count, events_count = await get_db_metrics()
 
@@ -83,32 +124,48 @@ async def show_stats(message: Message):
     active_panels[msg.message_id] = True
 
     async def update_panel():
-        while active_panels.get(msg.message_id, False):
-            await asyncio.sleep(5)
-            if not active_panels.get(msg.message_id, False):
-                break
-
-            cpu, ram, disk, net_sent, net_recv, uptime = get_system_metrics()
-            users_count, events_count = await get_db_metrics()
-            new_text = format_stats(cpu, ram, disk, net_sent, net_recv, uptime, users_count, events_count)
-
-            try:
-                await msg.edit_text(new_text, reply_markup=keyboard, parse_mode="HTML")
-            except TelegramAPIError as e:
-                if "message to edit not found" in str(e).lower() or "message is not modified" not in str(e).lower():
-                    # Stop if message was deleted
-                    active_panels[msg.message_id] = False
+        start_update = time.time()
+        try:
+            while active_panels.get(msg.message_id, False):
+                await asyncio.sleep(5)
+                if not active_panels.get(msg.message_id, False):
                     break
-                pass
+
+                if time.time() - start_update > 300:
+                    try:
+                        await msg.edit_text("⏳ Dashboard expired to save system resources. Run /stats again.", reply_markup=None)
+                    except TelegramAPIError:
+                        pass
+                    break
+
+                cpu, ram, disk, net_sent, net_recv, uptime = get_system_metrics()
+                users_count, events_count = await get_db_metrics()
+                new_text = format_stats(cpu, ram, disk, net_sent, net_recv, uptime, users_count, events_count)
+
+                try:
+                    await msg.edit_text(new_text, reply_markup=keyboard, parse_mode="HTML")
+                except TelegramAPIError as e:
+                    if "message to edit not found" in str(e).lower() or "message is not modified" not in str(e).lower():
+                        break
+                    pass
+        finally:
+            active_panels.pop(msg.message_id, None)
 
     asyncio.create_task(update_panel())
 
 @router.callback_query(lambda c: c.data == "close_stats")
 async def close_stats(callback_query):
+    """
+    Handle the close stats callback query. Stops the dashboard background task and edits
+    the message to indicate that the dashboard has closed.
+
+    Args:
+        callback_query (CallbackQuery): The Telegram callback query.
+    """
     try:
         await callback_query.answer()
     except TelegramAPIError:
-        pass # Ignore query is too old error
+        pass
 
     msg_id = callback_query.message.message_id
     if msg_id in active_panels:

@@ -19,6 +19,9 @@ from src.database.models import Cache
 from sqlalchemy import select
 
 async def get_cached_file_id(url: str, media_type: str):
+    """
+    Retrieves the cached file ID, title, and description for a URL and media type.
+    """
     try:
         async with AsyncSessionLocal() as session:
             result = await session.execute(
@@ -32,12 +35,14 @@ async def get_cached_file_id(url: str, media_type: str):
     return None, None, None
 
 async def set_cached_file_id(url: str, media_type: str, file_id: str, title: str = None, description: str = None):
-    if not url: # Safety check, can't cache without URL
+    """
+    Stores or updates a file ID, title, and description in the database cache.
+    """
+    if not url:
         return
 
     try:
         async with AsyncSessionLocal() as session:
-            # Check if exists to update, else insert
             result = await session.execute(
                 select(Cache).where(Cache.url == url, Cache.media_type == media_type)
             )
@@ -56,6 +61,9 @@ async def set_cached_file_id(url: str, media_type: str, file_id: str, title: str
         pass
 
 async def delete_cached_file_id(url: str, media_type: str):
+    """
+    Deletes a cached entry for a given URL and media type from the database.
+    """
     if not url:
         return
 

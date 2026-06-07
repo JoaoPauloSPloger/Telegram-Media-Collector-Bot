@@ -18,6 +18,9 @@ import json
 import os
 
 def load_locales():
+    """
+    Loads JSON translation files from locales directory into a dictionaries map.
+    """
     locales = {}
     locale_dir = 'src/locales'
     for file in os.listdir(locale_dir):
@@ -27,9 +30,10 @@ def load_locales():
                 locales[lang_code] = json.load(f)
     return locales
 
-# Define a fallback translation utility
 def get_text(locales, lang_code, key):
-    # fallback to 'en'
+    """
+    Retrieves translation for the specified key and language, falling back to 'en' on failure.
+    """
     if lang_code not in locales:
         lang_code = 'en'
     text = locales.get(lang_code, {}).get(key)

@@ -24,6 +24,12 @@ router = Router()
 locales = load_locales()
 
 def get_language_keyboard():
+    """
+    Generate the language selection keyboard.
+
+    Returns:
+        InlineKeyboardMarkup: The markup containing language selection buttons.
+    """
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🇩🇪 Deutsch", callback_data="lang_de"),
@@ -41,12 +47,18 @@ def get_language_keyboard():
 
 @router.message(CommandStart())
 async def cmd_start(message: Message):
+    """
+    Handle the /start command. Registers the user if new, checks for deep-link payloads,
+    and prompts for language selection or presents the main welcome screen.
+
+    Args:
+        message (Message): The Telegram start message.
+    """
     user_id = message.from_user.id
     name = message.from_user.first_name
     username = message.from_user.username
     lang_code = message.from_user.language_code
     
-    # Check for deep-link payload from inline mode
     payload = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else None
 
     if lang_code and lang_code.startswith(('de', 'en', 'es', 'fr', 'pt')):
@@ -62,7 +74,6 @@ async def cmd_start(message: Message):
         if user.eula_agreed:
             user_lang = user.language_code or 'en'
 
-            # If payload exists and EULA is agreed, process the deep link
             if payload:
                 from src.utils.cache import get_cached_file_id, delete_cached_file_id
 
@@ -86,6 +97,13 @@ async def cmd_start(message: Message):
                     else:
                         await message.answer("❌ This inline link has expired.")
                     return
+                elif payload.startswith('cancelqueue_'):
+                    target_user_id = payload[12:]
+                    from src.handlers.admin import pending_admin_actions
+                    action_id = f"cancelq_{target_user_id}"
+                    pending_admin_actions[user_id] = action_id
+                    await message.answer(f"🔒 Admin action requested: Cancel queue for user {target_user_id}.\nPlease enter your admin password (or /cancel to abort):")
+                    return
 
             await message.answer(get_text(locales, user_lang, "eula_agreed_already"))
             return
@@ -95,16 +113,21 @@ async def cmd_start(message: Message):
 
 @router.callback_query(lambda c: c.data.startswith('lang_'))
 async def process_language_selection(callback_query: CallbackQuery):
+    """
+    Handle user's language selection callback. Updates language in the database
+    and prompts the user to accept the End User License Agreement (EULA).
+
+    Args:
+        callback_query (CallbackQuery): The callback query containing the language data.
+    """
     lang_code = callback_query.data.split('_')[1]
     
-    # Update language in DB
     async with AsyncSessionLocal() as session:
         user = await get_user(session, callback_query.from_user.id)
         if user:
             user.language_code = lang_code
             await session.commit()
         else:
-            # If user sends a link directly without /start, they won't exist in DB yet.
             await create_user(
                 session,
                 callback_query.from_user.id,
@@ -124,16 +147,21 @@ async def process_language_selection(callback_query: CallbackQuery):
 
 @router.callback_query(lambda c: c.data.startswith('accept_eula_'))
 async def process_eula_acceptance(callback_query: CallbackQuery):
+    """
+    Handle EULA acceptance callback. Updates the user's EULA status to accepted in the database
+    and displays instructions on how to use the bot.
+
+    Args:
+        callback_query (CallbackQuery): The callback query confirming agreement.
+    """
     lang_code = callback_query.data.split('_')[2]
     
-    # Update EULA agreed in DB
     async with AsyncSessionLocal() as session:
         user = await get_user(session, callback_query.from_user.id)
         if user:
             user.eula_agreed = True
             await session.commit()
         else:
-            # Fallback if language selection was skipped somehow
             user = await create_user(
                 session,
                 callback_query.from_user.id,
@@ -149,6 +177,13 @@ async def process_eula_acceptance(callback_query: CallbackQuery):
 
 @router.message(Command("help"))
 async def cmd_help(message: Message, db_user):
+    """
+    Handle the /help command to show help options and basic usage.
+
+    Args:
+        message (Message): The Telegram help message.
+        db_user: The database user object.
+    """
     lang = db_user.language_code if db_user else 'en'
     help_text = get_text(locales, lang, "help_text")
     await message.answer(help_text, parse_mode="HTML")

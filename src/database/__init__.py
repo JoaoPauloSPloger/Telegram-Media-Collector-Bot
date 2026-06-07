@@ -13,6 +13,9 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+Database package initialization.
+"""
 
 from .models import Base, User, Group, Event
 from .db import engine, AsyncSessionLocal, init_db, encrypt_data, decrypt_data, get_user, create_user
