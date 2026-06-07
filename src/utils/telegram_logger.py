@@ -55,14 +55,14 @@ class TelegramLogHandler(logging.Handler):
 
                         insight = await get_llm_insight(log_entry)
                         if insight:
-                            insight_msg = f"🤖 **LLM Insight:**\n\n{insight}"
+                            insight_msg = f"🤖 <b>LLM Insight:</b>\n\n{insight}"
 
                             chunk_size = 4000
                             for i in range(0, len(insight_msg), chunk_size):
                                 await self.bot.send_message(
                                     chat_id=self.chat_id,
                                     text=insight_msg[i:i+chunk_size],
-                                    parse_mode="Markdown"
+                                    parse_mode="HTML"
                                 )
                     except Exception as llm_err:
                         print(f"LLM Insight failed silently: {llm_err}")

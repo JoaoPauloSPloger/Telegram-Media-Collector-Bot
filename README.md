@@ -10,7 +10,9 @@ Telegram Media Collector is a powerful bot for downloading and converting media 
 - **Live Progress UI:** ASCII progress bar and speed tracking edit the status message live.
 - **SQLite Database with Telemetry:** Secure, SQL-Injection-proof database tracking users and system metrics.
 - **Admin Hierarchy & Queue Management:** Master, Admin, and Aspiring admin levels with randomized, encrypted passwords. Admins can manage users, broadcast messages, and cancel long queues via deep links.
-- **LLM Error Insights:** Automatically forwards `ERROR` logs to a configured LLM (OpenAI, Anthropic, Gemini, Groq, or Local) and posts an actionable insight to the logging channel.
+- **Modular Extractor Registry:** Download pipeline restructured using the Chain of Responsibility pattern. Supports prioritized multi-tier fallbacks including `yt-dlp` (Tier 1), `spotdl` (Spotify), `Cobalt API` (Tier 2), `gallery-dl` (Tier 3), `TikWM API` (TikTok/Douyin), and generic OpenGraph parsing.
+- **Hybrid Inline Mode:** Instant media sharing using direct delivery. If a queried video or audio URL exists in the database file ID cache, it is served directly inside groups/chats. Otherwise, it redirects to the private chat to initiate download.
+- **LLM Error Insights:** Automatically forwards `ERROR` logs to a configured LLM (OpenAI, Anthropic, Gemini, Groq, or Local) and posts an actionable, highly concise SRE incident report (formatted in Telegram HTML) to the logging channel.
 
 ## Commands List
 
