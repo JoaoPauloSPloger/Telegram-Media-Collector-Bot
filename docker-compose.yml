@@ -35,6 +35,8 @@ services:
     volumes:
       - bot_data:/app/database
       - bot_downloads:/app/downloads
+      - ./src:/app/src
+      - ./LLM:/app/LLM
     ports:
       - "8080:8080" # Dummy port mapping to light up the dashboard UI
     depends_on:

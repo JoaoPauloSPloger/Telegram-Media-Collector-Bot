@@ -252,24 +252,22 @@ async def process_download(message: Message, db_user, url: str, lang: str, downl
         else:
             status_msg = await message.bot.send_message(chat_id=message.from_user.id, text=f"⏳ In queue...", reply_markup=cancel_kb)
     
-    await queue_manager.acquire(db_user.id, event_id, bot=message.bot)
-
-    if queue_manager.is_cancelled(event_id):
-        await status_msg.edit_text("❌ Cancelled")
-        return
-
-    try:
-        empty_bar = get_progress_bar(0.0)
-        analyzing_text = f"{SPINNER_FRAMES[0]} {get_text(locales, lang, 'status_analyzing')}\n"
-        analyzing_text += f"{empty_bar}\n"
-        analyzing_text += "ETA: --- | Speed: --- MB/s"
-        await status_msg.edit_text(analyzing_text, reply_markup=cancel_kb)
-    except TelegramAPIError:
-        pass
-
     cookies_path = None
     updater_task = None
     try:
+        await queue_manager.acquire(db_user.id, event_id, bot=message.bot)
+        if queue_manager.is_cancelled(event_id):
+            raise asyncio.CancelledError()
+
+        try:
+            empty_bar = get_progress_bar(0.0)
+            analyzing_text = f"{SPINNER_FRAMES[0]} {get_text(locales, lang, 'status_analyzing')}\n"
+            analyzing_text += f"{empty_bar}\n"
+            analyzing_text += "ETA: --- | Speed: --- MB/s"
+            await status_msg.edit_text(analyzing_text, reply_markup=cancel_kb)
+        except TelegramAPIError:
+            pass
+
         if db_user.use_cookies and db_user.encrypted_cookies:
             cookies_content = decrypt_data(db_user.encrypted_cookies)
             cookies_path = f"downloads/cookies_{event_id}.txt"
@@ -290,16 +288,12 @@ async def process_download(message: Message, db_user, url: str, lang: str, downl
                         eta = data.get('eta', 0)
                         speed = data.get('speed', 0)
                         
-                        if download_range:
-                            text = f"{spinner} ✂️ {get_text(locales, lang, 'status_clipping')}\n"
-                            text += "(This may take a while as it processes directly from the source)"
-                        else:
-                            bar = get_progress_bar(percentage)
-                            speed_mb = speed / 1024 / 1024 if speed else 0
-                            
-                            text = f"{spinner} {get_text(locales, lang, 'status_downloading')}\n"
-                            text += f"{bar}\n"
-                            text += f"ETA: {eta}s | Speed: {speed_mb:.1f} MB/s"
+                        speed_mb = speed / (1024 * 1024)
+                        bar = get_progress_bar(percentage)
+                        
+                        text = f"{spinner} {get_text(locales, lang, 'status_downloading')}\n"
+                        text += f"{bar}\n"
+                        text += f"ETA: {eta}s | Speed: {speed_mb:.1f} MB/s"
                         
                         try:
                             await status_msg.edit_text(text, reply_markup=cancel_kb)
@@ -330,6 +324,10 @@ async def process_download(message: Message, db_user, url: str, lang: str, downl
         is_admin = db_user.admin_level > 0
         result = await download_video(url, cookies_path, event_id, download_range=download_range, media_type=media_type, is_admin=is_admin)
     except asyncio.CancelledError:
+        try:
+            await status_msg.edit_text("❌ Cancelled")
+        except Exception:
+            pass
         return
     finally:
         queue_manager.release(db_user.id, event_id)
@@ -388,9 +386,8 @@ async def process_download(message: Message, db_user, url: str, lang: str, downl
     from src.handlers.upload import handle_upload
     await handle_upload(message, result, event_id, db_user, status_msg=status_msg)
 
-import aiogram
 @router.callback_query(lambda c: c.data.startswith('doc_'))
-async def process_document_request(callback_query: aiogram.types.CallbackQuery, db_user):
+async def process_document_request(callback_query: CallbackQuery, db_user):
     """
     Callback query handler to deliver the media file in standard document format.
     """
@@ -477,7 +474,7 @@ async def process_document_request(callback_query: aiogram.types.CallbackQuery, 
     await handle_upload(callback_query.message, result, event_id, db_user, is_document=True, status_msg=status_msg)
 
 @router.callback_query(lambda c: c.data.startswith('cancel_'))
-async def process_cancel_request(callback_query: aiogram.types.CallbackQuery, db_user):
+async def process_cancel_request(callback_query: CallbackQuery, db_user):
     """
     Callback query handler to cancel an active download event.
     """
@@ -486,7 +483,7 @@ async def process_cancel_request(callback_query: aiogram.types.CallbackQuery, db
     await callback_query.answer("Cancelling download...")
 
 @router.callback_query(lambda c: c.data.startswith('cancelall_'))
-async def process_cancel_all_request(callback_query: aiogram.types.CallbackQuery, db_user):
+async def process_cancel_all_request(callback_query: CallbackQuery, db_user):
     """
     Callback query handler to cancel all downloads for a user.
     """

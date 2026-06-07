@@ -37,6 +37,33 @@ async def cmd_test_error(message: Message, db_user):
     import logging
     logging.error("RuntimeError: This is a generated failure to test the LLM insight system. [29/05/2026 07:58] latanmcbot media log: User: 7309238470 URL: https://www.instagram.com/reel/DY2dvOkJ6Xt/ Status: Failed Error: ERROR: [Instagram] Instagram sent an empty media response.")
 
+def verify_master_password(provided_pw: str) -> bool:
+    """
+    Validates a password against the configured master admin_password,
+    supporting plaintext, base64 SHA-256 hash, and encrypted Fernet ciphertext.
+    """
+    admin_password = config.get('admin_password')
+    if not admin_password or not provided_pw:
+        return False
+    if provided_pw == admin_password:
+        return True
+    try:
+        import hashlib
+        import base64
+        hashed = base64.b64encode(hashlib.sha256(provided_pw.encode()).digest()).decode()
+        if hashed == admin_password:
+            return True
+    except Exception:
+        pass
+    try:
+        from src.database.db import decrypt_data
+        decrypted = decrypt_data(admin_password)
+        if decrypted and decrypted == provided_pw:
+            return True
+    except Exception:
+        pass
+    return False
+
 pending_admin_actions = {}
 
 import random
@@ -89,21 +116,19 @@ async def handle_admin_commands(message: Message, db_user):
     """
     Command handler for `/shutdown` and `/restart` to trigger a system shutdown/restart.
     """
-    admin_password = config.get('admin_password')
-
     is_master = False
     provided_pw = None
     parts = message.text.split(maxsplit=1)
     if len(parts) >= 2:
         provided_pw = parts[1]
 
-    if db_user and db_user.admin_level == 1:
-        from src.database.db import decrypt_data
-        if provided_pw and db_user.admin_password and decrypt_data(db_user.admin_password) == provided_pw:
+    if provided_pw:
+        if verify_master_password(provided_pw):
             is_master = True
-
-    if not is_master and admin_password and provided_pw == admin_password:
-        is_master = True
+        elif db_user and db_user.admin_level == 1:
+            from src.database.db import decrypt_data
+            if db_user.admin_password and decrypt_data(db_user.admin_password) == provided_pw:
+                is_master = True
 
     if not is_master:
         return
@@ -149,8 +174,9 @@ async def cmd_addadmin(message: Message, db_user):
     """
     Command handler for `/addadmin` to grant administrative access to a user.
     """
-    admin_password = config.get('admin_password')
-    is_master = (db_user and db_user.admin_level == 1)
+    if not db_user:
+        return
+    is_master = db_user.admin_level == 1
 
     parts = message.text.split()
     if len(parts) < 3:
@@ -173,18 +199,18 @@ async def cmd_addadmin(message: Message, db_user):
         await message.answer("🔒 Please enter your master password:")
         return
 
-    await process_addadmin(message, db_user, target_id, level, parts[3], is_master, admin_password)
+    await process_addadmin(message, db_user, target_id, level, parts[3], is_master)
 
-async def process_addadmin(message, db_user, target_id, level, master_pw, is_master, legacy_pw):
+async def process_addadmin(message, db_user, target_id, level, master_pw, is_master):
     """
     Validates and executes user additions to the admin list, generating their password.
     """
     from src.database.db import decrypt_data
 
     password_valid = False
-    if is_master and db_user.admin_password and decrypt_data(db_user.admin_password) == master_pw:
+    if verify_master_password(master_pw):
         password_valid = True
-    elif not is_master and legacy_pw and master_pw == legacy_pw:
+    elif is_master and db_user and db_user.admin_password and decrypt_data(db_user.admin_password) == master_pw:
         password_valid = True
 
     if not password_valid:
@@ -221,7 +247,7 @@ async def cmd_hierarchy(message: Message, db_user):
     """
     Command handler for `/promote`, `/demote`, and `/dismiss` hierarchical actions.
     """
-    if not db_user or db_user.admin_level != 1:
+    if not db_user:
         return
 
     parts = message.text.split()
@@ -244,7 +270,13 @@ async def process_hierarchy(message, db_user, target_id, command, master_pw):
     Updates the database record to promote, demote, or remove an admin user.
     """
     from src.database.db import decrypt_data
-    if not db_user.admin_password or decrypt_data(db_user.admin_password) != master_pw:
+    password_valid = False
+    if verify_master_password(master_pw):
+        password_valid = True
+    elif db_user and db_user.admin_level == 1 and db_user.admin_password and decrypt_data(db_user.admin_password) == master_pw:
+        password_valid = True
+
+    if not password_valid:
         await message.answer("❌ Invalid password.")
         return
 
@@ -279,7 +311,7 @@ async def cmd_regenpsw(message: Message, db_user):
     """
     Command handler for `/regenpsw` to regenerate an admin's password.
     """
-    if not db_user or db_user.admin_level != 1:
+    if not db_user:
         return
 
     parts = message.text.split()
@@ -301,7 +333,13 @@ async def process_regenpsw(message, db_user, target_id, master_pw):
     Generates a new secure password for an admin and updates their database record.
     """
     from src.database.db import decrypt_data
-    if not db_user.admin_password or decrypt_data(db_user.admin_password) != master_pw:
+    password_valid = False
+    if verify_master_password(master_pw):
+        password_valid = True
+    elif db_user and db_user.admin_level == 1 and db_user.admin_password and decrypt_data(db_user.admin_password) == master_pw:
+        password_valid = True
+
+    if not password_valid:
         await message.answer("❌ Invalid password.")
         return
 
@@ -357,9 +395,8 @@ async def handle_pending_admin_input(message: Message, db_user):
         password = message.text
         del pending_admin_actions[message.from_user.id]
         asyncio.create_task(delete_message_later(message, 1))
-        admin_password = config.get('admin_password')
         is_master = (db_user and db_user.admin_level == 1)
-        await process_addadmin(message, db_user, target_id, level, password, is_master, admin_password)
+        await process_addadmin(message, db_user, target_id, level, password, is_master)
         return
 
     if action.startswith("regenpsw_"):
@@ -387,7 +424,13 @@ async def handle_pending_admin_input(message: Message, db_user):
         asyncio.create_task(delete_message_later(message, 1))
 
         from src.database.db import decrypt_data
-        if not db_user.admin_password or decrypt_data(db_user.admin_password) != password:
+        password_valid = False
+        if verify_master_password(password):
+            password_valid = True
+        elif db_user and db_user.admin_password and decrypt_data(db_user.admin_password) == password:
+            password_valid = True
+
+        if not password_valid:
             await message.answer("❌ Invalid password.")
             return
 
@@ -402,7 +445,7 @@ async def cmd_broadcast(message: Message, db_user):
     """
     Command handler for `/broadcast` to initiate broadcasting messages to all users.
     """
-    if not db_user or db_user.admin_level not in [1, 2]:
+    if not db_user:
         return
 
     parts = message.text.split(maxsplit=2)
@@ -424,7 +467,13 @@ async def process_broadcast(message, db_user, password, text_to_broadcast):
     Validates admin password and sends the broadcast message to all users in the database.
     """
     from src.database.db import decrypt_data
-    if not db_user.admin_password or decrypt_data(db_user.admin_password) != password:
+    password_valid = False
+    if verify_master_password(password):
+        password_valid = True
+    elif db_user and db_user.admin_level in [1, 2] and db_user.admin_password and decrypt_data(db_user.admin_password) == password:
+        password_valid = True
+
+    if not password_valid:
         await message.answer("❌ Invalid password.")
         return
 

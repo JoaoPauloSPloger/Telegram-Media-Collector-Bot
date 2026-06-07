@@ -55,10 +55,15 @@ class GalleryDlExtractor(BaseExtractor):
             process = await asyncio.create_subprocess_exec(*cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
                 stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
-            except asyncio.TimeoutError:
-                process.kill()
+            except (asyncio.TimeoutError, asyncio.CancelledError) as e:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
                 shutil.rmtree(temp_dir, ignore_errors=True)
-                return {'success': False, 'error': 'gallery-dl download timed out.', 'status_code': 408}
+                if isinstance(e, asyncio.TimeoutError):
+                    return {'success': False, 'error': 'gallery-dl download timed out.', 'status_code': 408}
+                raise
 
             if process.returncode == 0:
                 list_of_files = glob.glob(f'{temp_dir}/**/*', recursive=True)

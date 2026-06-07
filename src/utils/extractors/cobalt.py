@@ -81,7 +81,14 @@ class CobaltExtractor(BaseExtractor):
                                         fixed_filename = f"{filename}_fixed.mp4"
                                         fix_cmd = ['ffmpeg', '-y', '-i', filename, '-c:v', 'libx264', '-preset', 'fast', '-c:a', 'copy', '-movflags', '+faststart', fixed_filename]
                                         fix_process = await asyncio.create_subprocess_exec(*fix_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                                        await fix_process.communicate()
+                                        try:
+                                            await fix_process.communicate()
+                                        except asyncio.CancelledError:
+                                            try:
+                                                fix_process.kill()
+                                            except Exception:
+                                                pass
+                                            raise
                                         if fix_process.returncode == 0 and os.path.exists(fixed_filename):
                                             os.remove(filename)
                                             filename = fixed_filename

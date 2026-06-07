@@ -46,9 +46,14 @@ class SpotDlExtractor(BaseExtractor):
             process = await asyncio.create_subprocess_exec(*cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
                 stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
-            except asyncio.TimeoutError:
-                process.kill()
-                return {'success': False, 'error': 'spotDL download timed out.', 'status_code': 408}
+            except (asyncio.TimeoutError, asyncio.CancelledError) as e:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+                if isinstance(e, asyncio.TimeoutError):
+                    return {'success': False, 'error': 'spotDL download timed out.', 'status_code': 408}
+                raise
 
             if process.returncode == 0:
                 matches = glob.glob(f"{download_dir}/{event_id}_*.*")
