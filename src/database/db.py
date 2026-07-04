@@ -107,12 +107,24 @@ async def init_db():
         except Exception:
             pass
 
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS error_insights (
+                    error_code_assigned VARCHAR PRIMARY KEY,
+                    original_error VARCHAR NOT NULL,
+                    date VARCHAR NOT NULL,
+                    llm_insight VARCHAR
+                )
+            """))
+        except Exception:
+            pass
+
 try:
     if not config.get('aes_key'):
         raise ValueError("No AES key provided")
     cipher_suite = Fernet(config['aes_key'].encode())
-except ValueError:
-    print("WARNING: Invalid AES key in config.json. Using a temporary key for this session.")
+except Exception:
+    print("WARNING: Invalid AES key in config.json. Using a temporary key for this session. Persistent encrypted data (like admin passwords) will fail to decrypt on restart.")
     temp_key = Fernet.generate_key()
     cipher_suite = Fernet(temp_key)
 

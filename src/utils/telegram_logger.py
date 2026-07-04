@@ -51,12 +51,47 @@ class TelegramLogHandler(logging.Handler):
 
                 if record.levelname == 'ERROR':
                     try:
-                        from LLM.insight import get_llm_insight
+                        # Skip highly repetitive or transient noisy errors
+                        noisy_markers = ["asyncio.exceptions.CancelledError", "TelegramRetryAfter", "NameError: cannot access free variable 'TelegramAPIError'"]
+                        if any(marker in log_entry for marker in noisy_markers):
+                            return
 
-                        insight = await get_llm_insight(log_entry)
+                        import hashlib
+                        import datetime
+                        from src.database.db import AsyncSessionLocal
+                        from src.database.models import ErrorInsight
+                        from sqlalchemy import select
+
+                        error_lines = [line for line in log_entry.split('\n') if "File " in line or "Error:" in line or "Exception:" in line]
+                        error_signature = "\n".join(error_lines[-5:]) if error_lines else log_entry[:500]
+                        error_code_assigned = hashlib.sha256(error_signature.encode()).hexdigest()[:16]
+
+                        cached_insight = None
+                        async with AsyncSessionLocal() as session:
+                            result = await session.execute(select(ErrorInsight).where(ErrorInsight.error_code_assigned == error_code_assigned))
+                            record_obj = result.scalar_one_or_none()
+                            if record_obj:
+                                cached_insight = record_obj.llm_insight
+
+                        if cached_insight:
+                            insight = cached_insight
+                            insight_msg = f"🤖 <b>LLM Insight (Cached - Code: {error_code_assigned}):</b>\n\n{insight}"
+                        else:
+                            from LLM.insight import get_llm_insight
+                            insight = await get_llm_insight(log_entry)
+                            if insight:
+                                insight_msg = f"🤖 <b>LLM Insight (New - Code: {error_code_assigned}):</b>\n\n{insight}"
+                                async with AsyncSessionLocal() as session:
+                                    new_insight = ErrorInsight(
+                                        error_code_assigned=error_code_assigned,
+                                        original_error=log_entry,
+                                        date=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                                        llm_insight=insight
+                                    )
+                                    session.add(new_insight)
+                                    await session.commit()
+
                         if insight:
-                            insight_msg = f"🤖 <b>LLM Insight:</b>\n\n{insight}"
-
                             chunk_size = 4000
                             for i in range(0, len(insight_msg), chunk_size):
                                 await self.bot.send_message(

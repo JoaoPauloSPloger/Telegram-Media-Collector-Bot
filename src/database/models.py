@@ -85,3 +85,14 @@ class Cache(Base):
     file_id = Column(String, nullable=False)
     title = Column(String, nullable=True)
     description = Column(String, nullable=True)
+
+class ErrorInsight(Base):
+    """
+    Caches LLM diagnostic insights for system errors to prevent API exhaustion.
+    """
+    __tablename__ = 'error_insights'
+
+    error_code_assigned = Column(String, primary_key=True)
+    original_error = Column(String, nullable=False)
+    date = Column(String, nullable=False)
+    llm_insight = Column(String, nullable=True)

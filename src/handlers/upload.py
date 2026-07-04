@@ -79,7 +79,7 @@ async def ensure_apple_compatibility(filepath: str) -> str:
         fixed_filepath = f"{filepath}_apple_fixed.mp4"
 
         if needs_reencode:
-            vcodec_args = ['-c:v', 'libx264', '-preset', 'superfast']
+            vcodec_args = ['-c:v', 'libx264', '-preset', 'superfast', '-pix_fmt', 'yuv420p']
         else:
             vcodec_args = ['-c:v', 'copy']
 
@@ -203,7 +203,6 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
     caption += footer_caption
     
     async def send_media(method_name, **kwargs):
-        from aiogram.exceptions import TelegramAPIError
         try:
             func = getattr(original_message, f"reply_{method_name}")
             return await func(**kwargs)
@@ -350,7 +349,6 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
                 await session.commit()
                 
     except Exception as e:
-        from aiogram.exceptions import TelegramAPIError
         try:
             await original_message.reply(f"❌ Error uploading video: {e}")
         except TelegramAPIError as api_err:
