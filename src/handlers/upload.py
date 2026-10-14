@@ -202,21 +202,26 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
         caption += f"<blockquote>{description}</blockquote>\n\n"
     caption += footer_caption
     
+    from src.utils.scheduler import telegram_scheduler
+
     async def send_media(method_name, **kwargs):
-        try:
-            func = getattr(original_message, f"reply_{method_name}")
-            return await func(**kwargs)
-        except TelegramAPIError as e:
-            if "message to reply not found" in str(e).lower() or "message is not modified" in str(e).lower():
-                try:
-                    func = getattr(original_message, f"answer_{method_name}")
-                    return await func(**kwargs)
-                except TelegramAPIError:
+        async def _attempt_send(*_args, **_kwargs):
+            try:
+                func = getattr(original_message, f"reply_{method_name}")
+                return await func(**kwargs)
+            except TelegramAPIError as e:
+                if "message to reply not found" in str(e).lower() or "message is not modified" in str(e).lower():
+                    try:
+                        func = getattr(original_message, f"answer_{method_name}")
+                        return await func(**kwargs)
+                    except TelegramAPIError:
+                        func = getattr(original_message.bot, f"send_{method_name}")
+                        return await func(chat_id=original_message.from_user.id, **kwargs)
+                else:
                     func = getattr(original_message.bot, f"send_{method_name}")
                     return await func(chat_id=original_message.from_user.id, **kwargs)
-            else:
-                func = getattr(original_message.bot, f"send_{method_name}")
-                return await func(chat_id=original_message.from_user.id, **kwargs)
+
+        return await telegram_scheduler.execute_safe(_attempt_send, target_chat_id=original_message.from_user.id)
 
     upload_ui_task = None
     if status_msg:
@@ -236,16 +241,22 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
                     eta_s = max(int(assumed_duration - elapsed), 0)
 
                     bar = get_progress_bar(progress_pct)
-                    text = f"{spinner} 📤 {get_text(locales, lang, 'status_uploading')}\n"
+                    text = f"{spinner} 📤 <b>{get_text(locales, lang, 'status_uploading')}</b>\n"
                     text += f"{bar}\n"
-                    text += f"ETA: {eta_s}s | Speed: {assumed_speed_mb:.1f} MB/s"
+                    text += f"ETA: {eta_s}s | Speed: ~{assumed_speed_mb:.1f} MB/s"
 
                     try:
-                        await status_msg.edit_text(text)
-                    except TelegramAPIError:
+                        await telegram_scheduler.edit_message_safe(
+                            original_message.bot,
+                            chat_id=status_msg.chat.id,
+                            message_id=status_msg.message_id,
+                            text=text,
+                            parse_mode="HTML"
+                        )
+                    except Exception:
                         pass
 
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(2.5)
             except asyncio.CancelledError:
                 pass
 
@@ -256,17 +267,17 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
         ext = filepath.split('.')[-1].lower()
         
         buttons = [
-            [InlineKeyboardButton(text=get_text(locales, lang, "get_full_file"), callback_data=f"doc_{event_id}")]
+            [InlineKeyboardButton(text=get_text(locales, lang, "get_full_file"), callback_data=f"doc_{event_id}", style="primary")]
         ]
         if ext in ['mp4', 'mkv', 'webm', 'mov'] and not is_document:
-            buttons.append([InlineKeyboardButton(text="🎧 Extract Audio (MP3)", callback_data=f"conv_mp3_{event_id}")])
-            buttons.append([InlineKeyboardButton(text="🖼 Convert to GIF", callback_data=f"conv_gif_{event_id}")])
+            buttons.append([InlineKeyboardButton(text="🎧 Extract Audio (MP3)", callback_data=f"conv_mp3_{event_id}", style="primary")])
+            buttons.append([InlineKeyboardButton(text="🖼 Convert to GIF", callback_data=f"conv_gif_{event_id}", style="primary")])
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         
         if is_document:
             msg = await send_media("document", document=file_input, caption=caption, parse_mode="HTML")
-            await set_cached_file_id(result['url'], 'doc', msg.document.file_id, title=title, description=description)
+            await set_cached_file_id(result.get('url'), 'doc', msg.document.file_id, title=title, description=description)
         elif ext in ['mp4', 'mkv', 'webm', 'mov']:
             width = result.get('width', 0)
             height = result.get('height', 0)
@@ -315,7 +326,7 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
                 supports_streaming=True,
                 thumbnail=thumb_input
             )
-            await set_cached_file_id(result['url'], 'video', msg.video.file_id, title=title, description=description)
+            await set_cached_file_id(result.get('url'), 'video', msg.video.file_id, title=title, description=description)
             await set_cached_file_id(f"temp_{event_id}", "upload", msg.video.file_id)
 
             if os.path.exists(thumb_path):
@@ -323,21 +334,21 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
 
         elif ext in ['jpg', 'jpeg', 'png', 'webp']:
             msg = await send_media("photo", photo=file_input, caption=caption, parse_mode="HTML", reply_markup=keyboard)
-            await set_cached_file_id(result['url'], 'photo', msg.photo[-1].file_id, title=title, description=description)
+            await set_cached_file_id(result.get('url'), 'photo', msg.photo[-1].file_id, title=title, description=description)
             await set_cached_file_id(f"temp_{event_id}", "upload", msg.photo[-1].file_id)
         elif ext in ['mp3', 'm4a', 'wav', 'ogg']:
             msg = await send_media("audio", audio=file_input, caption=caption, parse_mode="HTML", reply_markup=keyboard)
-            await set_cached_file_id(result['url'], 'audio', msg.audio.file_id, title=title, description=description)
+            await set_cached_file_id(result.get('url'), 'audio', msg.audio.file_id, title=title, description=description)
             await set_cached_file_id(f"temp_{event_id}", "upload", msg.audio.file_id)
         else:
             msg = await send_media("document", document=file_input, caption=caption, parse_mode="HTML")
-            await set_cached_file_id(result['url'], 'doc', msg.document.file_id, title=title, description=description)
+            await set_cached_file_id(result.get('url'), 'doc', msg.document.file_id, title=title, description=description)
             await set_cached_file_id(f"temp_{event_id}", "upload", msg.document.file_id)
         
         media_logging_channel_id = config.get('media_logging_channel_id')
         if media_logging_channel_id:
             try:
-                log_caption = f"👤 User: {original_message.from_user.id} (@{original_message.from_user.username})\n🔗 URL: {result['url']}\n✅ Status: Success"
+                log_caption = f"👤 User: {original_message.from_user.id} (@{original_message.from_user.username})\n🔗 URL: {result.get('url', 'Unknown URL')}\n✅ Status: Success"
                 await msg.copy_to(chat_id=media_logging_channel_id, caption=log_caption, reply_markup=None)
             except Exception as e:
                 logging.error(f"Failed to log media to channel: {e}")
@@ -366,7 +377,7 @@ async def handle_upload(original_message: Message, result: dict, event_id: str, 
         media_logging_channel_id = config.get('media_logging_channel_id')
         if media_logging_channel_id:
             try:
-                log_text = f"👤 User: {original_message.from_user.id} (@{original_message.from_user.username})\n🔗 URL: {result['url']}\n❌ Status: Failed\nError: {e}"
+                log_text = f"👤 User: {original_message.from_user.id} (@{original_message.from_user.username})\n🔗 URL: {result.get('url', 'Unknown URL')}\n❌ Status: Failed\nError: {e}"
                 await original_message.bot.send_message(chat_id=media_logging_channel_id, text=log_text)
             except Exception as log_e:
                 logging.error(f"Failed to log error to media channel: {log_e}")

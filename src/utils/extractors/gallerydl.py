@@ -44,14 +44,18 @@ class GalleryDlExtractor(BaseExtractor):
         """
         Downloads the media file from the URL using gallery-dl CLI.
         """
+        cookies_path = options.get('cookies_path')
         download_dir = "downloads"
         os.makedirs(download_dir, exist_ok=True)
         
         temp_dir = f"{download_dir}/temp_{event_id}"
         os.makedirs(temp_dir, exist_ok=True)
         
+        import sys
         try:
-            cmd = ['gallery-dl', url, '--dest', temp_dir]
+            cmd = [sys.executable, '-m', 'gallery_dl', url, '--dest', temp_dir]
+            if cookies_path and os.path.exists(cookies_path):
+                cmd.extend(['--cookies', cookies_path])
             process = await asyncio.create_subprocess_exec(*cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
                 stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)

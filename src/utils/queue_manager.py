@@ -67,12 +67,12 @@ class UserQueueManager:
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="❌ Cancel User Queue", url=f"https://t.me/{bot_username}?start=cancelqueue_{user_id}")
+            InlineKeyboardButton(text="❌ Cancel User Queue", url=f"https://t.me/{bot_username}?start=cancelqueue_{user_id}", style="danger")
         ]])
 
-        msg = f"⚠️ **Queue Alert** ⚠️\n\nUser ID `{user_id}` has reached `{queue_len}` items in their download queue!"
+        msg = f"⚠️ <b>Queue Alert</b> ⚠️\n\nUser ID <code>{user_id}</code> has reached <code>{queue_len}</code> items in their download queue!"
         try:
-            await bot.send_message(chat_id=media_channel, text=msg, reply_markup=keyboard, parse_mode="Markdown")
+            await bot.send_message(chat_id=media_channel, text=msg, reply_markup=keyboard, parse_mode="HTML")
         except Exception as e:
             import logging
             logging.error(f"Failed to send queue alert to media channel: {e}")

@@ -31,6 +31,16 @@ async def main():
     
     await init_db()
 
+    # Automatically clean up any orphaned events stuck in 'started' state from previous process exits/restarts
+    try:
+        from src.database.db import AsyncSessionLocal
+        from sqlalchemy import text
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("UPDATE events SET status = 'failed', error_msg = 'Interrupted during bot restart' WHERE status = 'started';"))
+            await session.commit()
+    except Exception as e:
+        logging.warning(f"Could not clean up stale events: {e}")
+
     bot_token = config['bot_token']
     local_api_server = config.get('local_api_server')
 
@@ -79,9 +89,13 @@ async def main():
     dp.callback_query.middleware(EulaMiddleware())
     dp.inline_query.middleware(EulaMiddleware())
 
+    from src.utils.scheduler import telegram_scheduler
+    telegram_scheduler.start()
+
     try:
         await dp.start_polling(bot)
     finally:
+        await telegram_scheduler.stop()
         await bot.session.close()
         from src.database.db import engine
         await engine.dispose()

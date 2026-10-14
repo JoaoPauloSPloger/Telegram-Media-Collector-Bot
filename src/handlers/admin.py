@@ -35,7 +35,7 @@ async def cmd_test_error(message: Message, db_user):
     await message.answer("Generating a test error for the LLM pipeline...")
 
     import logging
-    logging.error("RuntimeError: This is a generated failure to test the LLM insight system. [29/05/2026 07:58] latanmcbot media log: User: 7309238470 URL: https://www.instagram.com/reel/DY2dvOkJ6Xt/ Status: Failed Error: ERROR: [Instagram] Instagram sent an empty media response.")
+    logging.error("RuntimeError: This is a generated failure to test the LLM insight system. [29/05/2026 07:58] tmcollectorbot media log: User: 7309238470 URL: https://www.instagram.com/reel/DY2dvOkJ6Xt/ Status: Failed Error: ERROR: [Instagram] Instagram sent an empty media response.")
 
 def verify_master_password(provided_pw: str) -> bool:
     """
@@ -102,7 +102,7 @@ async def audit_log(bot, admin_user, action_type, text=""):
     time_str = now.strftime("%H:%M")
     full_date = now.strftime("%d/%m/%Y %H:%M")
 
-    msg = (f"[{full_date}] latanmcbot sys log: System Log [AUDIT] - "
+    msg = (f"[{full_date}] tmcollectorbot sys log: System Log [AUDIT] - "
            f"Admin UID: {admin_user.id} - Username: @{admin_user.username or 'unknown'} - "
            f"Action: {action_type} - Date: {date_str} - Time (UTC): {time_str} - {text}")
 
@@ -141,7 +141,7 @@ async def handle_admin_commands(message: Message, db_user):
     media_logging_channel_id = config.get('media_logging_channel_id')
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"⚠️ Confirm {command_used.capitalize()}", callback_data=f"confirm_admin_{command_used}")]
+        [InlineKeyboardButton(text=f"⚠️ Confirm {command_used.capitalize()}", callback_data=f"confirm_admin_{command_used}", style="danger")]
     ])
 
     msg_text = f"🚨 Admin requested a system **{command_used}**.\nWaiting for confirmation..."
@@ -233,10 +233,19 @@ async def process_addadmin(message, db_user, target_id, level, master_pw, is_mas
     await message.answer(f"✅ User {target_id} is now admin level {level}.")
 
     try:
-        msg = await message.bot.send_message(
+        import html
+        safe_pw = html.escape(new_pw)
+        msg_text = (
+            f"🎉 <b>You have been granted admin level {level}!</b>\n\n"
+            f"Your personal password is: <code>{safe_pw}</code>\n\n"
+            f"<i>This message will be deleted in 30 minutes.</i>"
+        )
+        from src.utils.scheduler import telegram_scheduler
+        msg = await telegram_scheduler.send_message_safe(
+            message.bot,
             chat_id=target_id,
-            text=f"🎉 You have been granted admin level {level}!\n\nYour personal password is: `{new_pw}`\n\n_This message will be deleted in 30 minutes._",
-            parse_mode="Markdown"
+            text=msg_text,
+            parse_mode="HTML"
         )
         asyncio.create_task(delete_message_later(msg, 30 * 60))
     except Exception as e:
@@ -358,10 +367,19 @@ async def process_regenpsw(message, db_user, target_id, master_pw):
     await message.answer(f"✅ Regenerated password for user {target_id}.")
 
     try:
-        msg = await message.bot.send_message(
+        import html
+        safe_pw = html.escape(new_pw)
+        msg_text = (
+            f"🔑 <b>Your admin password has been regenerated.</b>\n\n"
+            f"Your new password is: <code>{safe_pw}</code>\n\n"
+            f"<i>This message will be deleted in 30 minutes.</i>"
+        )
+        from src.utils.scheduler import telegram_scheduler
+        msg = await telegram_scheduler.send_message_safe(
+            message.bot,
             chat_id=target_id,
-            text=f"🔑 Your admin password has been regenerated.\n\nYour new password is: `{new_pw}`\n\n_This message will be deleted in 30 minutes._",
-            parse_mode="Markdown"
+            text=msg_text,
+            parse_mode="HTML"
         )
         asyncio.create_task(delete_message_later(msg, 30 * 60))
     except Exception as e:
@@ -477,6 +495,10 @@ async def process_broadcast(message, db_user, password, text_to_broadcast):
         await message.answer("❌ Invalid password.")
         return
 
+    text_to_broadcast = text_to_broadcast.strip()
+    if (text_to_broadcast.startswith('"') and text_to_broadcast.endswith('"')) or (text_to_broadcast.startswith("'") and text_to_broadcast.endswith("'")):
+        text_to_broadcast = text_to_broadcast[1:-1].strip()
+
     await message.answer("Broadcasting message...")
     await audit_log(message.bot, db_user, "broadcast", f"Sent broadcast message: {text_to_broadcast[:50]}...")
 
@@ -490,12 +512,20 @@ async def process_broadcast(message, db_user, password, text_to_broadcast):
         result = await session.execute(select(User.id))
         users = result.scalars().all()
 
+    from src.utils.scheduler import telegram_scheduler
+    import logging
+    logger = logging.getLogger(__name__)
+
     for u_id in users:
         try:
-            await message.bot.send_message(chat_id=u_id, text=text_to_broadcast)
+            await telegram_scheduler.send_message_safe(
+                message.bot,
+                chat_id=u_id,
+                text=text_to_broadcast
+            )
             success_users.append(u_id)
-            await asyncio.sleep(0.05)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Broadcast failed for user {u_id}: {e}")
             failed_users.append(u_id)
 
     summary_msg = f"✅ Broadcast complete.\nSuccess: {len(success_users)}\nFailed: {len(failed_users)}"

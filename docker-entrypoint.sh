@@ -18,8 +18,8 @@
 set -e
 
 # Change ownership of mounted volumes
-chown -R botuser:botuser /app/database
-chown -R botuser:botuser /app/downloads
+chown -R botuser:botuser /app/database || true
+chown -R botuser:botuser /app/downloads || true
 
 # Drop privileges and execute the main command
 exec gosu botuser "$@"

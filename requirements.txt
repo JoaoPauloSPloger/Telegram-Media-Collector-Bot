@@ -9,3 +9,4 @@ aiohttp
 psutil
 spotdl
 gallery-dl
+greenlet

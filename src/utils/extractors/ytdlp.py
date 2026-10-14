@@ -102,6 +102,11 @@ class YtDlpExtractor(BaseExtractor):
             ydl_opts['merge_output_format'] = 'mp4'
             ydl_opts['postprocessor_args'] = ['-movflags', '+faststart']
 
+        ydl_opts['http_headers'] = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7',
+        }
+
         if download_range:
             start_time, end_time = download_range
             if end_time is None:
@@ -109,7 +114,7 @@ class YtDlpExtractor(BaseExtractor):
             ydl_opts['download_ranges'] = yt_dlp.utils.download_range_func(None, [(start_time, end_time)])
             ydl_opts['force_keyframes_at_cuts'] = True
         
-        if cookies_path:
+        if cookies_path and os.path.exists(cookies_path):
             ydl_opts['cookiefile'] = cookies_path
 
         def run_download(opts=None):

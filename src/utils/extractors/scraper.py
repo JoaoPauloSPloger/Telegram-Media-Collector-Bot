@@ -46,8 +46,12 @@ class ScraperExtractor(BaseExtractor):
         download_dir = "downloads"
         os.makedirs(download_dir, exist_ok=True)
         
+        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        if 'instagram.com' in url or 'facebook.com' in url:
+            user_agent = "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)"
+
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            "User-Agent": user_agent
         }
 
         try:
@@ -137,6 +141,7 @@ class ScraperExtractor(BaseExtractor):
                                 
                     return {
                         'success': True,
+                        'url': url,
                         'filepath': filepath,
                         'title': title,
                         'description': '',

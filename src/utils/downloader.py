@@ -111,8 +111,17 @@ async def download_video(url: str, cookies_path: str = None, event_id: str = Non
     if not await is_safe_url(url):
         return {'success': False, 'error': 'Security Policy Violation: Internal/Private IPs are blocked.', 'status_code': 403}
 
+    if not cookies_path:
+        from src.database.db import config
+        global_cookies = config.get('global_cookies_path') or "downloads/cookies.txt"
+        if os.path.exists(global_cookies):
+            cookies_path = global_cookies
+
     if not event_id:
         event_id = str(uuid.uuid4())
+
+    from src.utils.url_cleaner import resolve_redirect_url
+    url = await resolve_redirect_url(url)
 
     from src.utils.extractors import extractors_registry
 
@@ -123,6 +132,8 @@ async def download_video(url: str, cookies_path: str = None, event_id: str = Non
     }
 
     tier_logs = []
+    last_error = 'All download fallback options exhausted.'
+    status_code = 500
     
     for extractor in extractors_registry:
         if extractor.can_handle(url, media_type):
@@ -133,13 +144,15 @@ async def download_video(url: str, cookies_path: str = None, event_id: str = Non
                     return result
                 else:
                     err_msg = result.get('error', 'Unknown error')
+                    last_error = err_msg
+                    status_code = result.get('status_code', 500)
                     tier_logs.append(f"{extractor.name} Failed: {err_msg}")
             except Exception as e:
                 tier_logs.append(f"{extractor.name} Exception: {str(e)}")
 
     return {
         'success': False,
-        'error': 'All download fallback options exhausted.',
+        'error': last_error,
         'tier_logs': tier_logs,
-        'status_code': 500
+        'status_code': status_code
     }

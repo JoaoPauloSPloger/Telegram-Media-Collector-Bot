@@ -1,0 +1,12 @@
+.venv
+venv
+__pycache__
+*.pyc
+.git
+.gitignore
+downloads
+downloads/**
+database/*.db-shm
+database/*.db-wal
+build
+*.egg-info

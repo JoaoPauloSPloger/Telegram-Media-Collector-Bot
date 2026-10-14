@@ -22,16 +22,13 @@ from .base import BaseExtractor
 
 class CobaltExtractor(BaseExtractor):
     """
-    Downloader implementation using the Cobalt HTTP API.
+    Downloader implementation using Cobalt HTTP API (supporting v7 and v10 protocols).
     """
     @property
     def name(self) -> str:
         return "Cobalt API"
 
     def can_handle(self, url: str, media_type: str) -> bool:
-        """
-        Determines if the URL is from a social media domain supported by Cobalt.
-        """
         social_domains = [
             'twitter.com', 'x.com', 'instagram.com', 
             'tiktok.com', 'reddit.com', 'bsky.app', 
@@ -40,36 +37,44 @@ class CobaltExtractor(BaseExtractor):
         return any(domain in url for domain in social_domains)
 
     async def download(self, url: str, event_id: str, media_type: str, options: dict) -> dict:
-        """
-        Downloads media using Cobalt API endpoint and handles streaming.
-        """
+        from src.database.db import config
         download_dir = "downloads"
         os.makedirs(download_dir, exist_ok=True)
         
-        try:
-            cobalt_api_url = "https://api.cobalt.tools/api/json"
-            headers = {
-                "Accept": "application/json",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "url": url,
-                "isAudioOnly": media_type == 'audio'
-            }
+        cobalt_api_url = config.get('cobalt_api_url', 'https://api.cobalt.tools/')
+        cobalt_api_key = config.get('cobalt_api_key')
 
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "TelegramMediaCollectorBot/2.0"
+        }
+        if cobalt_api_key:
+            headers["Authorization"] = f"Bearer {cobalt_api_key}"
+
+        payload = {
+            "url": url,
+            "downloadMode": "audio" if media_type == 'audio' else "auto"
+        }
+        # Backward compatibility for legacy v7
+        if "api/json" in cobalt_api_url:
+            payload["isAudioOnly"] = (media_type == 'audio')
+
+        try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(cobalt_api_url, headers=headers, json=payload, timeout=30) as resp:
+                async with session.post(cobalt_api_url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=20)) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         status = data.get('status')
-                        if status in ['stream', 'redirect'] and 'url' in data:
-                            media_url = data['url']
+                        media_url = data.get('url')
+
+                        if status in ['stream', 'redirect', 'tunnel'] and media_url:
                             ext = 'mp3' if media_type == 'audio' else 'mp4'
                             filename = f"{download_dir}/{event_id}_cobalt.{ext}"
 
                             from src.utils.security import is_safe_url
                             if not await is_safe_url(media_url):
-                                return {'success': False, 'error': 'Security Policy Violation: Cobalt redirect points to an internal/private IP.', 'status_code': 403}
+                                return {'success': False, 'error': 'Security Policy Violation: Cobalt redirect points to internal IP.', 'status_code': 403}
 
                             async with session.get(media_url) as file_resp:
                                 if file_resp.status == 200:
@@ -101,8 +106,10 @@ class CobaltExtractor(BaseExtractor):
                                         'description': 'Media bypassing successful',
                                         'duration': 0
                                     }
-                            return {'success': False, 'error': f'Failed to fetch Cobalt media stream. Status: {file_resp.status}', 'status_code': file_resp.status}
-                        return {'success': False, 'error': f'Cobalt returned unsupported status: {status}', 'status_code': 400}
-                    return {'success': False, 'error': f'Cobalt API returned status {resp.status}', 'status_code': resp.status}
+                                return {'success': False, 'error': f'Failed to fetch Cobalt stream: status {file_resp.status}', 'status_code': file_resp.status}
+                        return {'success': False, 'error': f'Cobalt status: {status}', 'status_code': 400}
+                    
+                    err_text = await resp.text()
+                    return {'success': False, 'error': f'Cobalt API HTTP {resp.status}: {err_text[:100]}', 'status_code': resp.status}
         except Exception as e:
-            return {'success': False, 'error': f'Cobalt API execution error: {str(e)}', 'status_code': 500}
+            return {'success': False, 'error': f'Cobalt error: {str(e)}', 'status_code': 500}

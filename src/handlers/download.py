@@ -116,11 +116,10 @@ async def handle_url_message(message: Message, db_user):
     if not db_user:
         return
         
-    urls = URL_REGEX.findall(message.text)
+    from src.utils.url_cleaner import clean_and_split_urls
+    urls = clean_and_split_urls(message.text)
     if not urls:
         return
-        
-    urls = [u.rstrip(',;') for u in urls]
 
     lang = db_user.language_code if db_user else 'en'
     
@@ -129,34 +128,36 @@ async def handle_url_message(message: Message, db_user):
         import asyncio
 
         is_playlist = False
-        try:
-            ydl_opts = {'extract_flat': True, 'quiet': True, 'no_warnings': True}
+        # Only inspect as playlist if it actually indicates a playlist/album and not an algorithmic radio/mix
+        if ('playlist?list=' in url or '/sets/' in url) and 'list=RD' not in url:
+            try:
+                ydl_opts = {'extract_flat': True, 'quiet': True, 'no_warnings': True}
 
-            def extract_playlist_info():
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    return ydl.extract_info(url, download=False)
+                def extract_playlist_info():
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        return ydl.extract_info(url, download=False)
 
-            loop = asyncio.get_event_loop()
-            info = await loop.run_in_executor(None, extract_playlist_info)
+                loop = asyncio.get_event_loop()
+                info = await loop.run_in_executor(None, extract_playlist_info)
 
-            if info and 'entries' in info:
-                is_playlist = True
-                playlist_urls = [entry['url'] for entry in info['entries'] if entry.get('url')]
+                if info and 'entries' in info:
+                    is_playlist = True
+                    playlist_urls = [entry['url'] for entry in info['entries'] if entry.get('url')]
 
-                if playlist_urls:
-                    from src.database.db import config
-                    max_playlist_items = config.get('max_playlist_items', 100)
+                    if playlist_urls:
+                        from src.database.db import config
+                        max_playlist_items = config.get('max_playlist_items', 100)
 
-                    if len(playlist_urls) > max_playlist_items and db_user.admin_level == 0:
-                        await message.answer(f"⚠️ Playlist contains {len(playlist_urls)} items, which exceeds the limit of {max_playlist_items}. Truncating to {max_playlist_items} items.")
-                        playlist_urls = playlist_urls[:max_playlist_items]
+                        if len(playlist_urls) > max_playlist_items and db_user.admin_level == 0:
+                            await message.answer(f"⚠️ Playlist contains {len(playlist_urls)} items, which exceeds the limit of {max_playlist_items}. Truncating to {max_playlist_items} items.")
+                            playlist_urls = playlist_urls[:max_playlist_items]
 
-                    await message.answer(f"📦 Found playlist with {len(playlist_urls)} items. Adding them to queue...")
-                    for pl_url in playlist_urls:
-                        media_type = 'audio' if ('spotify.com' in pl_url or 'music.apple.com' in pl_url) else 'video'
-                        await process_download(message, db_user, pl_url, lang, media_type=media_type)
-        except Exception:
-            pass
+                        await message.answer(f"📦 Found playlist with {len(playlist_urls)} items. Adding them to queue...")
+                        for pl_url in playlist_urls:
+                            media_type = 'audio' if ('spotify.com' in pl_url or 'music.apple.com' in pl_url) else 'video'
+                            await process_download(message, db_user, pl_url, lang, media_type=media_type)
+            except Exception:
+                pass
 
         if not is_playlist:
             media_type = 'audio' if ('spotify.com' in url or 'music.apple.com' in url) else 'video'
@@ -212,12 +213,12 @@ async def process_download(message: Message, db_user, url: str, lang: str, downl
                 await set_cached_file_id(f"temp_{short_cache_id}", "upload", cached_file_id)
 
                 buttons = [
-                    [InlineKeyboardButton(text=get_text(locales, lang, "get_full_file"), callback_data=f"doc_cache_{short_cache_id}")]
+                    [InlineKeyboardButton(text=get_text(locales, lang, "get_full_file"), callback_data=f"doc_cache_{short_cache_id}", style="primary")]
                 ]
                 if media_type in ['video', 'audio', 'doc'] and media_type != 'doc':
                     if media_type == 'video':
-                        buttons.append([InlineKeyboardButton(text="🎧 Extract Audio (MP3)", callback_data=f"conv_mp3_{short_cache_id}")])
-                        buttons.append([InlineKeyboardButton(text="🖼 Convert to GIF", callback_data=f"conv_gif_{short_cache_id}")])
+                        buttons.append([InlineKeyboardButton(text="🎧 Extract Audio (MP3)", callback_data=f"conv_mp3_{short_cache_id}", style="primary")])
+                        buttons.append([InlineKeyboardButton(text="🖼 Convert to GIF", callback_data=f"conv_gif_{short_cache_id}", style="primary")])
 
                 keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -239,8 +240,8 @@ async def process_download(message: Message, db_user, url: str, lang: str, downl
         await session.commit()
     
     cancel_kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="❌ Cancel", callback_data=f"cancel_{event_id}"),
-        InlineKeyboardButton(text="❌ Cancel All", callback_data=f"cancelall_{db_user.id}")
+        InlineKeyboardButton(text="❌ Cancel", callback_data=f"cancel_{event_id}", style="danger"),
+        InlineKeyboardButton(text="❌ Cancel All", callback_data=f"cancelall_{db_user.id}", style="danger")
     ]])
 
     try:
@@ -291,31 +292,54 @@ async def process_download(message: Message, db_user, url: str, lang: str, downl
                         speed_mb = speed / (1024 * 1024)
                         bar = get_progress_bar(percentage)
                         
-                        text = f"{spinner} {get_text(locales, lang, 'status_downloading')}\n"
+                        text = f"{spinner} 📥 <b>{get_text(locales, lang, 'status_downloading')}</b>\n"
                         text += f"{bar}\n"
-                        text += f"ETA: {eta}s | Speed: {speed_mb:.1f} MB/s"
+                        text += f"⏱️ ETA: {eta}s | ⚡ Speed: {speed_mb:.1f} MB/s"
                         
                         try:
-                            await status_msg.edit_text(text, reply_markup=cancel_kb)
-                        except TelegramAPIError:
+                            from src.utils.scheduler import telegram_scheduler
+                            await telegram_scheduler.edit_message_safe(
+                                status_msg.bot,
+                                chat_id=status_msg.chat.id,
+                                message_id=status_msg.message_id,
+                                text=text,
+                                reply_markup=cancel_kb,
+                                parse_mode="HTML"
+                            )
+                        except Exception:
                             pass
                     elif data['status'] == 'finished':
                         try:
-                            await status_msg.edit_text(f"✅ {get_text(locales, lang, 'status_uploading')}")
-                        except TelegramAPIError:
+                            from src.utils.scheduler import telegram_scheduler
+                            await telegram_scheduler.edit_message_safe(
+                                status_msg.bot,
+                                chat_id=status_msg.chat.id,
+                                message_id=status_msg.message_id,
+                                text=f"✅ 📤 <b>{get_text(locales, lang, 'status_uploading')}</b>",
+                                parse_mode="HTML"
+                            )
+                        except Exception:
                             pass
                         break
                 else:
                     try:
                         empty_bar = get_progress_bar(0.0)
-                        text = f"{spinner} {get_text(locales, lang, 'status_analyzing')}\n"
+                        text = f"{spinner} 🔍 <b>{get_text(locales, lang, 'status_analyzing')}</b>\n"
                         text += f"{empty_bar}\n"
-                        text += "ETA: --- | Speed: --- MB/s"
-                        await status_msg.edit_text(text, reply_markup=cancel_kb)
-                    except TelegramAPIError:
+                        text += "⏱️ ETA: --- | ⚡ Speed: --- MB/s"
+                        from src.utils.scheduler import telegram_scheduler
+                        await telegram_scheduler.edit_message_safe(
+                            status_msg.bot,
+                            chat_id=status_msg.chat.id,
+                            message_id=status_msg.message_id,
+                            text=text,
+                            reply_markup=cancel_kb,
+                            parse_mode="HTML"
+                        )
+                    except Exception:
                         pass
                 
-                await asyncio.sleep(2)
+                await asyncio.sleep(2.5)
                 
         updater_task = asyncio.create_task(update_status())
         
@@ -324,8 +348,25 @@ async def process_download(message: Message, db_user, url: str, lang: str, downl
         is_admin = db_user.admin_level > 0
         result = await download_video(url, cookies_path, event_id, download_range=download_range, media_type=media_type, is_admin=is_admin)
     except asyncio.CancelledError:
+        async with AsyncSessionLocal() as session:
+            event = await session.get(Event, event_id)
+            if event:
+                event.status = 'cancelled'
+                await session.commit()
         try:
             await status_msg.edit_text("❌ Cancelled")
+        except Exception:
+            pass
+        return
+    except Exception as e:
+        async with AsyncSessionLocal() as session:
+            event = await session.get(Event, event_id)
+            if event:
+                event.status = 'failed'
+                event.error_msg = str(e)
+                await session.commit()
+        try:
+            await status_msg.edit_text(f"❌ Error: {e} (ID: {event_id})")
         except Exception:
             pass
         return
@@ -344,38 +385,58 @@ async def process_download(message: Message, db_user, url: str, lang: str, downl
                 pass
         
     if queue_manager.is_cancelled(event_id):
-        await status_msg.edit_text("❌ Cancelled")
+        async with AsyncSessionLocal() as session:
+            event = await session.get(Event, event_id)
+            if event:
+                event.status = 'cancelled'
+                await session.commit()
+        try:
+            await status_msg.edit_text("❌ Cancelled")
+        except Exception:
+            pass
         return
 
     if not result['success']:
         error_msg = result.get('error', 'Unknown error')
+        status_code = result.get('status_code', 500)
         
-        if not result['success']:
-            status_code = result.get('status_code', 500)
-            async with AsyncSessionLocal() as session:
-                event = await session.get(Event, event_id)
-                if event:
-                    event.status = 'failed'
-                    event.error_msg = error_msg
-                    await session.commit()
-                    
-            from src.database.db import config
-            media_logging_channel_id = config.get('media_logging_channel_id')
-            if media_logging_channel_id:
-                try:
-                    log_text = f"👤 User: {message.from_user.id} (@{message.from_user.username})\n🔗 URL: {url}\n❌ Status: Failed\nError: {error_msg}"
-                    await message.bot.send_message(chat_id=media_logging_channel_id, text=log_text)
-                except Exception as log_e:
-                    import logging
-                    logging.error(f"Failed to log error to media channel: {log_e}")
+        async with AsyncSessionLocal() as session:
+            event = await session.get(Event, event_id)
+            if event:
+                event.status = 'failed'
+                event.error_msg = error_msg
+                await session.commit()
+                
+        from src.database.db import config
+        media_logging_channel_id = config.get('media_logging_channel_id')
+        if media_logging_channel_id:
+            try:
+                log_text = f"👤 User: {message.from_user.id} (@{message.from_user.username})\n🔗 URL: {url}\n❌ Status: Failed\nError: {error_msg}"
+                await message.bot.send_message(chat_id=media_logging_channel_id, text=log_text)
+            except Exception as log_e:
+                import logging
+                logging.error(f"Failed to log error to media channel: {log_e}")
 
-            if error_msg == 'unsupported_url':
-                display_msg = get_text(locales, lang, "error_invalid_url")
-            else:
-                display_msg = f"Error {status_code}"
+        # Human-friendly error translation based on database error patterns
+        lower_err = error_msg.lower()
+        if error_msg == 'unsupported_url':
+            display_msg = get_text(locales, lang, "error_invalid_url")
+        elif "cookies" in lower_err or "login required" in lower_err or "empty media response" in lower_err:
+            display_msg = "Este post requer login ou cookies. Use o comando /usecookies para enviar seus cookies ao bot." if lang == 'pt' else "This post requires login or cookies. Use the /usecookies command to upload your cookies."
+        elif "no video" in lower_err or "no media" in lower_err:
+            display_msg = "Nenhum vídeo ou foto compatível foi encontrado neste link." if lang == 'pt' else "No compatible video or photo was found at this link."
+        elif status_code == 413 or "larger than" in lower_err:
+            display_msg = get_text(locales, lang, "error_file_too_large")
+        elif "private video" in lower_err or "video unavailable" in lower_err or status_code == 404:
+            display_msg = "Vídeo indisponível ou excluído pela plataforma." if lang == 'pt' else "Video is unavailable or removed by the platform."
+        else:
+            display_msg = f"Erro no download ({error_msg[:100]})"
 
+        try:
             await status_msg.edit_text(f"❌ {display_msg} (ID: {event_id})")
-            return
+        except Exception:
+            pass
+        return
         
     async with AsyncSessionLocal() as session:
         event = await session.get(Event, event_id)

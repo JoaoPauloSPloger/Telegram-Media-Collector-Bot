@@ -24,10 +24,14 @@ from .cobalt import CobaltExtractor
 from .gallerydl import GalleryDlExtractor
 from .tikwm import TikWmExtractor
 from .scraper import ScraperExtractor
+from .fxtwitter import FxTwitterExtractor
+from .bluesky import BlueskyExtractor
 
 extractors_registry = [
     SpotDlExtractor(),
     TikWmExtractor(),
+    FxTwitterExtractor(),
+    BlueskyExtractor(),
     YtDlpExtractor(),
     CobaltExtractor(),
     GalleryDlExtractor(),

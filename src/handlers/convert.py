@@ -59,11 +59,11 @@ async def handle_media_message(message: Message, db_user):
     keyboard_buttons = []
 
     if media_type == 'video':
-        keyboard_buttons.append([InlineKeyboardButton(text="🎧 Extract Audio (MP3)", callback_data=f"conv_mp3_{event_id}")])
-        keyboard_buttons.append([InlineKeyboardButton(text="🖼 Convert to GIF", callback_data=f"conv_gif_{event_id}")])
+        keyboard_buttons.append([InlineKeyboardButton(text="🎧 Extract Audio (MP3)", callback_data=f"conv_mp3_{event_id}", style="primary")])
+        keyboard_buttons.append([InlineKeyboardButton(text="🖼 Convert to GIF", callback_data=f"conv_gif_{event_id}", style="primary")])
     elif media_type in ['audio', 'voice']:
-        keyboard_buttons.append([InlineKeyboardButton(text="🎵 Convert to MP3", callback_data=f"conv_mp3_{event_id}")])
-        keyboard_buttons.append([InlineKeyboardButton(text="🎵 Convert to WAV", callback_data=f"conv_wav_{event_id}")])
+        keyboard_buttons.append([InlineKeyboardButton(text="🎵 Convert to MP3", callback_data=f"conv_mp3_{event_id}", style="primary")])
+        keyboard_buttons.append([InlineKeyboardButton(text="🎵 Convert to WAV", callback_data=f"conv_wav_{event_id}", style="primary")])
 
     if not keyboard_buttons:
         return

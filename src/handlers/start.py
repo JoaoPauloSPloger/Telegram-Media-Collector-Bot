@@ -32,15 +32,15 @@ def get_language_keyboard():
     """
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🇩🇪 Deutsch", callback_data="lang_de"),
-            InlineKeyboardButton(text="🇺🇸 English", callback_data="lang_en")
+            InlineKeyboardButton(text="🇩🇪 Deutsch", callback_data="lang_de", style="primary"),
+            InlineKeyboardButton(text="🇺🇸 English", callback_data="lang_en", style="primary")
         ],
         [
-            InlineKeyboardButton(text="🇪🇸 Español", callback_data="lang_es"),
-            InlineKeyboardButton(text="🇫🇷 Français", callback_data="lang_fr")
+            InlineKeyboardButton(text="🇪🇸 Español", callback_data="lang_es", style="primary"),
+            InlineKeyboardButton(text="🇫🇷 Français", callback_data="lang_fr", style="primary")
         ],
         [
-            InlineKeyboardButton(text="🇧🇷 Português", callback_data="lang_pt")
+            InlineKeyboardButton(text="🇧🇷 Português", callback_data="lang_pt", style="primary")
         ]
     ])
     return keyboard
@@ -97,6 +97,20 @@ async def cmd_start(message: Message):
                     else:
                         await message.answer("❌ This inline link has expired.")
                     return
+                elif payload == 'inline_guide':
+                    from src.database.db import config
+                    b_user = config.get('bot_username', 'TMCollector_Bot')
+                    guide_text = (
+                        f"🚀 <b>Bem-vindo ao Modo Inline do TMCB!</b>\n\n"
+                        f"Você pode usar o bot em qualquer conversa, grupo ou canal sem precisar adicioná-lo como membro!\n\n"
+                        f"<b>Como funciona:</b>\n"
+                        f"1. Em qualquer chat, digite <code>@{b_user}</code> e dê um espaço.\n"
+                        f"2. Cole o link do vídeo (Instagram Reels, TikTok, YouTube, X/Twitter, Bluesky, Spotify...).\n"
+                        f"3. Toque no resultado para compartilhar ou iniciar o download!\n\n"
+                        f"💡 <i>Ou envie qualquer link diretamente aqui neste chat para baixar agora.</i>"
+                    )
+                    await message.answer(guide_text, parse_mode="HTML")
+                    return
                 elif payload.startswith('cancelqueue_'):
                     target_user_id = payload[12:]
                     from src.handlers.admin import pending_admin_actions
@@ -140,7 +154,7 @@ async def process_language_selection(callback_query: CallbackQuery):
     accept_button_text = get_text(locales, lang_code, "accept_button")
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=accept_button_text, callback_data=f"accept_eula_{lang_code}")]
+        [InlineKeyboardButton(text=accept_button_text, callback_data=f"accept_eula_{lang_code}", style="success")]
     ])
     
     await callback_query.message.edit_text(eula_text, reply_markup=keyboard, parse_mode="HTML")

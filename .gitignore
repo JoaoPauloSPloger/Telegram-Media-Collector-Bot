@@ -1,9 +1,61 @@
+# Environments and Virtualenv
+.venv/
 venv/
+ENV/
+env/
+
+# Python Cache & Bytecode
 __pycache__/
-*.db
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Distribution & Build
+build/
+develop-eggs/
+dist/
 downloads/
-config.json
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Sensitive Credentials and Environment Configurations
 .env
+.env.*
+!.env.example
+config.json
 key.txt
+iniciar_docker.txt
+
+# Databases and SQLite artifacts
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+database/*.db
+database/*.db-shm
+database/*.db-wal
+
+# Media Downloads & Temporary Cookies
+downloads/
+downloads/**
+cookies*.txt
+
+# Temporary / Scratch Dumps
 BigTree.json
 BigTree.txt
+*.log
+
+# OS Generated
+.DS_Store
+Thumbs.db
